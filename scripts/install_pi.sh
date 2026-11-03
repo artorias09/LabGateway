@@ -12,7 +12,7 @@ echo "Arquitetura: $ARCH"
 command -v python3 >/dev/null || die "Python 3 ausente."
 python3 -c 'import sys; assert sys.version_info >= (3,10), "Python >= 3.10 requerido"' || die "Python antigo. Nao atualize o sistema do forno sem backup."
 command -v docker >/dev/null || die "Docker nao instalado. Avalie compatibilidade do sistema antes de instalar."
-docker info >/dev/null 2>&1 || die "Docker daemon nao funcional ou sem permissao neste usuario. Verifique manualmente."
+if ! docker info >/dev/null 2>&1; then\n  if [ "$MODE" = "--install" ]; then\n    die "Docker daemon nao funcional. Verifique manualmente."\n  fi\n  echo "AVISO: usuario sem acesso ao daemon Docker, ou daemon parado. Validar com sudo antes da instalacao."\nfi
 [ -f "$ROOT/app.py" ] || die "Execute de dentro do repositorio LabGateway."
 echo "Arquitetura, Python e Docker: OK"
 echo "Servicos antigos:"
