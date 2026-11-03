@@ -137,4 +137,4 @@ def detail(sid):
     return render_template('detail.html',item=item,runs=runs)
 
 if __name__=='__main__':
-    app.run(host='127.0.0.1',port=5000,debug=False)
+    app.run(host='127.0.0.1',port=int(os.environ.get('LAB_PORT', '5001')),debug=False)
