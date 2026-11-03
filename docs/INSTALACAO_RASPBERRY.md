@@ -37,6 +37,7 @@ docker pull python:3.12-alpine
 sudo systemctl cat forno.service
 sudo systemctl cat labgateway-web.service
 sudo systemctl cat labgateway-worker.service
+sudo bash scripts/smoke_pi.sh
 ```
 
 Antes da primeira execução real, verificar se a imagem foi carregada para Docker e testar limites de CPU, RAM, pids, timeout e limpeza de contêiner. Verificar acesso do `labrunner` ao grupo `docker` e acesso compartilhado a SQLite/uploads; se houver falhas, não iniciar os serviços.
