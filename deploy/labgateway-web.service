@@ -3,6 +3,7 @@ Description=LabGateway Web
 After=network.target
 
 [Service]
+UMask=0007
 User=labweb
 Group=labweb
 WorkingDirectory=/opt/labgateway
