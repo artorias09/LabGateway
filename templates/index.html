@@ -1,1 +1,33 @@
-{% extends 'base.html' %}{% block content %}<article><h2>Enviar projeto</h2><p>Envie um ZIP de até 2 MiB com <code>main.py</code> na raiz. Somente arquivos .py, .txt, .json, .csv e .md.</p><form action="{{ url_for('upload') }}" method="post" enctype="multipart/form-data"><input type="hidden" name="_csrf" value="{{ csrf() }}"><label>Nome do projeto</label><input name="title" maxlength="100" required><label>Arquivo ZIP</label><input type="file" name="file" accept=".zip" required><p><button>Enviar projeto</button></p></form></article><article><h2>{{ 'Todos os envios' if session.role=='teacher' else 'Meus envios' }}</h2><table><thead><tr><th>#</th><th>Projeto</th><th>Grupo</th><th>Status</th></tr></thead><tbody>{% for i in items %}<tr><td>{{i.id}}</td><td><a href="{{url_for('detail',sid=i.id)}}">{{i.title}}</a></td><td>{{i.username}}</td><td>{{i.status or 'Aguardando'}}</td></tr>{% else %}<tr><td colspan="4">Sem envios.</td></tr>{% endfor %}</tbody></table></article>{% endblock %}
+{% extends 'base.html' %}
+{% block title %}Projetos | LabGateway{% endblock %}
+{% block content %}
+<h1>Projetos da disciplina</h1>
+<p class="intro">{% if session.role=='teacher' %}Consulte os envios dos grupos e selecione o projeto que deseja executar.{% else %}Envie o código do grupo e acompanhe os resultados da avaliação.{% endif %}</p>
+<div class="grid">
+  <section class="panel">
+    <h2>Enviar projeto</h2>
+    <form method="post" action="{{url_for('upload')}}" enctype="multipart/form-data">
+      <input type="hidden" name="_csrf" value="{{csrf()}}">
+      <div class="field"><label for="title">Nome do projeto</label><input type="text" id="title" name="title" maxlength="100" placeholder="Ex.: Exercício 2" required></div>
+      <div class="field"><label for="file">Arquivo ZIP</label><input id="file" name="file" type="file" accept=".zip" required></div>
+      <p class="hint">Até 2 MB. Coloque o arquivo <span class="mono">main.py</span> na raiz do ZIP. São aceitos arquivos .py, .txt, .json, .csv e .md.</p>
+      <button class="button" type="submit">Enviar projeto</button>
+    </form>
+  </section>
+  <section class="panel">
+    <h2>{{ 'Envios recebidos' if session.role=='teacher' else 'Meus envios' }}</h2>
+    <div class="tablewrap"><table>
+      <thead><tr><th>Projeto</th><th>Grupo</th><th>Situação</th><th></th></tr></thead>
+      <tbody>
+      {% for item in items %}
+      <tr>
+        <td><a href="{{url_for('detail',sid=item.id)}}">{{item.title}}</a><div class="meta">#{{item.id}}</div></td>
+        <td>{{item.username}}</td>
+        <td><span class="status {{ item.status or '' }}">{{ status_label(item.status) }}</span></td>
+        <td><a href="{{url_for('detail',sid=item.id)}}">Abrir</a></td>
+      </tr>
+      {% else %}<tr><td colspan="4" class="empty">Nenhum projeto enviado.</td></tr>{% endfor %}
+      </tbody></table></div>
+  </section>
+</div>
+{% endblock %}
