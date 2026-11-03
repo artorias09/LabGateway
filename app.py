@@ -48,7 +48,9 @@ def add_csrf():
 @app.before_request
 def csrf_check():
     if request.method == 'POST':
-        if not secrets.compare_digest(request.form.get('_csrf',''),session.get('csrf','')):
+        submitted = request.form.get('_csrf', '')
+        expected = session.get('csrf')
+        if not expected or not submitted or not secrets.compare_digest(submitted, expected):
             abort(400,'Token CSRF inválido')
 
 @app.errorhandler(RequestEntityTooLarge)
