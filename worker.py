@@ -1,5 +1,6 @@
 """Single-process Docker runner. Untrusted code is never executed directly on host."""
 import argparse
+import sys
 import shutil
 import subprocess
 import tempfile
@@ -100,7 +101,8 @@ def once():
             (status, output, store.now(), row["id"]),
         )
     if status == "error" and output.startswith("ALERTA:"):
-        raise RuntimeError(output)
+        print(output, file=sys.stderr)
+        sys.exit(78)
     return True
 
 
