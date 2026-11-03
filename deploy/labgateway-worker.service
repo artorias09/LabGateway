@@ -4,6 +4,7 @@ After=docker.service
 Requires=docker.service
 
 [Service]
+UMask=0007
 # Docker socket access is effectively host-root: never expose it to the web service.
 User=labrunner
 Group=labrunner
