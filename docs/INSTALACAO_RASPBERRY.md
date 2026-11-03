@@ -33,7 +33,7 @@ Os serviços são copiados, mas **não são iniciados automaticamente**. Não h�
 ```bash
 cd ~/LabGateway
 /opt/labgateway/.venv/bin/python -m unittest discover -s tests -v
-docker pull python:3.12-alpine
+sudo docker pull python:3.12-alpine
 sudo systemctl cat forno.service
 sudo systemctl cat labgateway-web.service
 sudo systemctl cat labgateway-worker.service
