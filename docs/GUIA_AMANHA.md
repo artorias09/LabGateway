@@ -7,14 +7,14 @@
 1. Ligar a Pi. Se estiver configurada apenas para a eduroam, ela pode não entrar no Wi-Fi doméstico.
 2. Na USP, acessar via SSH pelo IP real, caso a rede permita. Alternativamente, conectar um cabo Ethernet a uma rede com DHCP.
 3. Não presumir `raspberrypi.local`, IP ou o nome da interface de Wi-Fi. O roteamento do forno tinha duas interfaces.
-4. Não modificar `wlan0`, `wlan1`, `setup_rede.sh`, `forno.service` ou ngrok do forno.
+4. Reutilizar os perfis eduroam e ngrok já existentes, sem os alterar. Não modificar `wlan0`, `wlan1`, `setup_rede.sh`, `forno.service` ou ngrok do forno.
 
 ## 2. Pré-diagnóstico
 
 ```bash
 git clone -b fix/pi3-preflight-hardening https://github.com/artorias09/LabGateway.git ~/LabGateway
 cd ~/LabGateway
-bash scripts/preflight.sh
+bash scripts/audit_forno_reuse.sh\nbash scripts/preflight.sh
 bash scripts/install_pi.sh --check
 ```
 
