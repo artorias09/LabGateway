@@ -23,6 +23,16 @@ class DeploymentContracts(unittest.TestCase):
         self.assertNotIn("forno.service", web)
         self.assertNotIn("forno.service", worker)
 
+    def test_armv7_requires_verified_memory_cgroup(self):
+        installer = (ROOT / "scripts/install_pi.sh").read_text()
+        self.assertIn("aarch64|armv7l", installer)
+        self.assertIn('docker run --rm --network none --memory 128m --memory-swap 128m', installer)
+        self.assertIn('134217728', installer)
+
+    def test_smoke_directory_is_readable_by_unprivileged_container(self):
+        script = (ROOT / "scripts/smoke_pi.sh").read_text()
+        self.assertIn('chmod 755 "$TMP"', script)
+
     def test_installer_preserves_forno_and_eduroam(self):
         installer = (ROOT / "scripts/install_pi.sh").read_text()
         self.assertIn('MODE="${1:---check}"', installer)
