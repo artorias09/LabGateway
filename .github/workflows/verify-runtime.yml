@@ -1,0 +1,28 @@
+name: Validar executor Docker
+on:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  docker-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install Python dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Prepare image
+        run: docker pull python:3.12-alpine
+      - name: Run real isolated code and limits
+        env:
+          LAB_RUN_DOCKER_TESTS: "1"
+        run: python -m unittest discover -s tests -p test_docker_live.py -v
+      - name: Check for orphaned project containers
+        if: always()
+        run: |
+          count=$(docker ps -aq --filter 'name=^/labgateway-' | wc -l)
+          test "$count" -eq 0
