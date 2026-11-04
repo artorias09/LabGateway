@@ -42,6 +42,32 @@ class LiveRunnerTests(unittest.TestCase):
         self.assertLess(len(output), 13000)
         self.assertIn("truncada", output)
 
+    def test_network_disabled(self):
+        script = (
+            "import socket\\n"
+            "s=socket.socket();s.settimeout(2)\\n"
+            "try:\\n"
+            " s.connect(('1.1.1.1', 80));print('NETWORK_BROKEN')\\n"
+            "except OSError:\\n"
+            " print('NETWORK_BLOCKED')\\n"
+        )
+        status, output = self.execute(script)
+        self.assertEqual(status, "passed", output)
+        self.assertIn("NETWORK_BLOCKED", output)
+        self.assertNotIn("NETWORK_BROKEN", output)
+
+    def test_readonly_filesystem(self):
+        script = (
+            "try:\\n"
+            " open('/submission/new.txt','w').write('x');print('WRITE_BROKEN')\\n"
+            "except OSError:\\n"
+            " print('READONLY_OK')\\n"
+        )
+        status, output = self.execute(script)
+        self.assertEqual(status, "passed", output)
+        self.assertIn("READONLY_OK", output)
+        self.assertNotIn("WRITE_BROKEN", output)
+
     def test_timeout_and_no_orphan(self):
         status, output = self.execute("import time\ntime.sleep(60)\n")
         self.assertEqual(status, "timeout", output)
