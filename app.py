@@ -17,6 +17,21 @@ app.config.update(MAX_CONTENT_LENGTH=2*1024*1024+100*1024,
                   SESSION_COOKIE_SECURE=os.environ.get('LAB_SECURE_COOKIE','0')=='1')
 store.init()
 
+STATUS_LABELS = {'queued':'Na fila','running':'Executando','passed':'Concluído','failed':'Erro no programa','timeout':'Tempo excedido','error':'Falha no servidor'}
+
+@app.context_processor
+def labels():
+    return {'status_label': lambda key: STATUS_LABELS.get(key, 'Aguardando execução')}
+
+@app.after_request
+def security_headers(response):
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    response.headers['X-Frame-Options'] = 'DENY'
+    response.headers['Referrer-Policy'] = 'same-origin'
+    response.headers['Cache-Control'] = 'no-store'
+    response.headers['Content-Security-Policy'] = "default-src 'self'; style-src 'self'; img-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'"
+    return response
+
 def require_login(fn):
     @wraps(fn)
     def inner(*a,**kw):
@@ -136,7 +151,8 @@ def detail(sid):
         if item is None: abort(404)
         if session['role']!='teacher' and item['user_id']!=session['uid']: abort(403)
         runs=db.execute('SELECT * FROM runs WHERE submission_id=? ORDER BY id DESC LIMIT 20',(sid,)).fetchall()
-    return render_template('detail.html',item=item,runs=runs)
+    pending = any(r['status'] in ('queued','running') for r in runs)
+    return render_template('detail.html',item=item,runs=runs,pending=pending)
 
 if __name__=='__main__':
     app.run(host='127.0.0.1',port=int(os.environ.get('LAB_PORT', '5001')),debug=False)
