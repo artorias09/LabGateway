@@ -8,7 +8,7 @@ die(){ printf 'ERRO: %s\n' "$*" >&2; exit 1; }
 echo "LabGateway: verificacao do equipamento"
 ARCH="$(uname -m)"
 echo "Arquitetura: $ARCH"
-[ "$ARCH" = "aarch64" ] || die "Requer Raspberry Pi OS 64-bit (aarch64). Preserve o microSD do forno e use um cartao separado se necessario."
+case "$ARCH" in aarch64|armv7l) ;; *) die "Arquitetura nao homologada: $ARCH";; esac
 command -v python3 >/dev/null || die "Python 3 ausente."
 python3 -c 'import sys; assert sys.version_info >= (3,10), "Python >= 3.10 requerido"' || die "Python antigo. Nao atualize o sistema do forno sem backup."
 command -v docker >/dev/null || die "Docker nao instalado. Avalie compatibilidade do sistema antes de instalar."
@@ -20,6 +20,13 @@ if ! docker info >/dev/null 2>&1; then
 fi
 [ -f "$ROOT/app.py" ] || die "Execute de dentro do repositorio LabGateway."
 echo "Arquitetura e Python: OK; Docker encontrado (acesso ao daemon deve ser confirmado)"
+if [ "$MODE" = "--install" ]; then
+  docker image inspect python:3.12-alpine >/dev/null 2>&1 || die "Falta a imagem Python. Antes da instalacao execute: sudo docker pull python:3.12-alpine"
+  echo "Confirmando limite real de 128 MiB no Docker..."
+  LIMIT="$(docker run --rm --network none --memory 128m --memory-swap 128m python:3.12-alpine cat /sys/fs/cgroup/memory.max 2>/dev/null)" || die "Docker falhou no teste de cgroup."
+  [ "$LIMIT" = "134217728" ] || die "Limite Docker nao aplicado (obtido: $LIMIT). Instalacao bloqueada."
+  echo "Limite real de memoria: OK"
+fi
 echo "Servicos antigos:"
 for SERVICE in forno.service ngrok.service; do echo "$SERVICE: $(systemctl is-active "$SERVICE" 2>/dev/null || true)"; done
 if [ "$MODE" = "--check" ]; then
