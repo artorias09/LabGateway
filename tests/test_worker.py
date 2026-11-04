@@ -29,9 +29,9 @@ class WorkerTests(unittest.TestCase):
             (source / "main.py").write_text("print(1)")
             with patch.object(worker.store, "UPLOAD", root), \
                  patch("worker.shutil.which", return_value="/usr/bin/docker"), \
+                 patch("worker._run_bounded", side_effect=subprocess.TimeoutExpired(["docker", "run"], 15)), \
                  patch("worker.subprocess.run") as run:
                 run.side_effect = [
-                    subprocess.TimeoutExpired(["docker", "run"], 15),
                     SimpleNamespace(returncode=0),
                     SimpleNamespace(returncode=1),
                 ]
