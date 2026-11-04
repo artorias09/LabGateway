@@ -37,11 +37,14 @@ done
 getent group labdata >/dev/null || groupadd --system labdata
 id -u labweb >/dev/null 2>&1 || useradd --system --no-create-home --shell /usr/sbin/nologin --gid labdata labweb
 id -u labrunner >/dev/null 2>&1 || useradd --system --no-create-home --shell /usr/sbin/nologin --gid labdata labrunner
-getent group docker >/dev/null || die "Grupo docker inexistente."\ngetent group labdata >/dev/null || die "Grupo labdata ausente."
+getent group docker >/dev/null || die "Grupo docker inexistente."
+getent group labdata >/dev/null || die "Grupo labdata ausente."
 usermod -a -G docker labrunner
 mkdir -p /opt/labgateway /etc/labgateway /var/lib/labgateway/uploads
 cp -a "$ROOT/." /opt/labgateway/
-chown -R root:root /opt/labgateway\nchmod -R go-w /opt/labgateway\nchmod 755 /opt/labgateway
+chown -R root:root /opt/labgateway
+chmod -R go-w /opt/labgateway
+chmod 755 /opt/labgateway
 chown -R labweb:labdata /var/lib/labgateway
 chmod 2770 /var/lib/labgateway /var/lib/labgateway/uploads
 umask 027
