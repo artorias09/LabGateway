@@ -13,7 +13,7 @@ echo "[pacotes]"; for cmd in python3 git docker ngrok; do
 done
 echo "[python]"; python3 --version 2>&1 || true
 echo "[docker]"; if command -v docker >/dev/null 2>&1; then docker --version; docker info --format '{{.Architecture}} {{.CgroupDriver}}' 2>&1 || true; fi
-echo "[servicos]"; for svc in forno.service ngrok.service docker.service ssh.service; do
+echo "[servicos]"; for svc in forno.service flask-app.service ngrok.service notify-link.service url-watcher.service docker.service ssh.service; do
   echo "$svc: $(systemctl is-active "$svc" 2>/dev/null || true)"
 done
 echo "[portas HTTP 5000/5001]"; if command -v ss >/dev/null 2>&1; then ss -ltn '( sport = :5000 or sport = :5001 )' 2>/dev/null || true; fi
