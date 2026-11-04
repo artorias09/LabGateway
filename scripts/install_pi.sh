@@ -12,9 +12,14 @@ echo "Arquitetura: $ARCH"
 command -v python3 >/dev/null || die "Python 3 ausente."
 python3 -c 'import sys; assert sys.version_info >= (3,10), "Python >= 3.10 requerido"' || die "Python antigo. Nao atualize o sistema do forno sem backup."
 command -v docker >/dev/null || die "Docker nao instalado. Avalie compatibilidade do sistema antes de instalar."
-if ! docker info >/dev/null 2>&1; then\n  if [ "$MODE" = "--install" ]; then\n    die "Docker daemon nao funcional. Verifique manualmente."\n  fi\n  echo "AVISO: usuario sem acesso ao daemon Docker, ou daemon parado. Validar com sudo antes da instalacao."\nfi
+if ! docker info >/dev/null 2>&1; then
+  if [ "$MODE" = "--install" ]; then
+    die "Docker daemon nao funcional. Verifique manualmente."
+  fi
+  echo "AVISO: usuario sem acesso ao daemon Docker, ou daemon parado. Validar com sudo antes da instalacao."
+fi
 [ -f "$ROOT/app.py" ] || die "Execute de dentro do repositorio LabGateway."
-echo "Arquitetura, Python e Docker: OK"
+echo "Arquitetura e Python: OK; Docker encontrado (acesso ao daemon deve ser confirmado)"
 echo "Servicos antigos:"
 for SERVICE in forno.service ngrok.service; do echo "$SERVICE: $(systemctl is-active "$SERVICE" 2>/dev/null || true)"; done
 if [ "$MODE" = "--check" ]; then
@@ -33,11 +38,13 @@ getent group labdata >/dev/null || groupadd --system labdata
 id -u labweb >/dev/null 2>&1 || useradd --system --no-create-home --shell /usr/sbin/nologin --gid labdata labweb
 id -u labrunner >/dev/null 2>&1 || useradd --system --no-create-home --shell /usr/sbin/nologin --gid labdata labrunner
 getent group docker >/dev/null || die "Grupo docker inexistente."
+getent group labdata >/dev/null || die "Grupo labdata ausente."
 usermod -a -G docker labrunner
 mkdir -p /opt/labgateway /etc/labgateway /var/lib/labgateway/uploads
 cp -a "$ROOT/." /opt/labgateway/
 chown -R root:root /opt/labgateway
 chmod -R go-w /opt/labgateway
+chmod 755 /opt/labgateway
 chown -R labweb:labdata /var/lib/labgateway
 chmod 2770 /var/lib/labgateway /var/lib/labgateway/uploads
 umask 027

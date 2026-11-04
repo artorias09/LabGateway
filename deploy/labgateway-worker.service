@@ -7,7 +7,7 @@ Requires=docker.service
 UMask=0007
 # Docker socket access is effectively host-root: never expose it to the web service.
 User=labrunner
-Group=labrunner
+Group=labdata
 SupplementaryGroups=docker
 WorkingDirectory=/opt/labgateway
 Environment=LAB_DB=/var/lib/labgateway/labgateway.sqlite3
