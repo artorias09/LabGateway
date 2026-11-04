@@ -9,7 +9,7 @@ TMP="$(sudo -u labweb mktemp -d /var/lib/labgateway/uploads/smoke-XXXXXXXX)" || 
 cleanup(){ rm -rf -- "$TMP"; }
 trap cleanup EXIT
 printf 'print("LABGATEWAY_SMOKE_OK")\n' > "$TMP/main.py"
-chmod 750 "$TMP"
+chmod 755 "$TMP"
 chmod 644 "$TMP/main.py"
 echo "Teste 1: executar main.py de exemplo em Docker isolado"
 sudo -u labrunner env LAB_UPLOADS=/var/lib/labgateway/uploads LAB_DB=/var/lib/labgateway/labgateway.sqlite3 /opt/labgateway/.venv/bin/python - "$TMP" <<'PY'
