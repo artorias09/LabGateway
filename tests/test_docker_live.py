@@ -44,12 +44,12 @@ class LiveRunnerTests(unittest.TestCase):
 
     def test_network_disabled(self):
         script = (
-            "import socket\\n"
-            "s=socket.socket();s.settimeout(2)\\n"
-            "try:\\n"
-            " s.connect(('1.1.1.1', 80));print('NETWORK_BROKEN')\\n"
-            "except OSError:\\n"
-            " print('NETWORK_BLOCKED')\\n"
+            "import socket\n"
+            "s=socket.socket();s.settimeout(2)\n"
+            "try:\n"
+            " s.connect(('1.1.1.1', 80));print('NETWORK_BROKEN')\n"
+            "except OSError:\n"
+            " print('NETWORK_BLOCKED')\n"
         )
         status, output = self.execute(script)
         self.assertEqual(status, "passed", output)
@@ -58,10 +58,10 @@ class LiveRunnerTests(unittest.TestCase):
 
     def test_readonly_filesystem(self):
         script = (
-            "try:\\n"
-            " open('/submission/new.txt','w').write('x');print('WRITE_BROKEN')\\n"
-            "except OSError:\\n"
-            " print('READONLY_OK')\\n"
+            "try:\n"
+            " open('/submission/new.txt','w').write('x');print('WRITE_BROKEN')\n"
+            "except OSError:\n"
+            " print('READONLY_OK')\n"
         )
         status, output = self.execute(script)
         self.assertEqual(status, "passed", output)
