@@ -29,7 +29,14 @@ def _cleanup_container(name):
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
             timeout=DOCKER_COMMAND_TIMEOUT, check=False,
         )
-        if check.returncode == 0:\n            return False\n        health = subprocess.run(\n            ["docker", "info", "--format", "{{.ServerVersion}}"],\n            stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,\n            stderr=subprocess.DEVNULL, timeout=DOCKER_COMMAND_TIMEOUT, check=False,\n        )\n        return health.returncode == 0
+        if check.returncode == 0:
+            return False
+        health = subprocess.run(
+            ["docker", "info", "--format", "{{.ServerVersion}}"],
+            stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL, timeout=DOCKER_COMMAND_TIMEOUT, check=False,
+        )
+        return health.returncode == 0
     except (OSError, subprocess.TimeoutExpired):
         return False
 
