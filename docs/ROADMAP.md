@@ -6,8 +6,8 @@
 - [x] Worker Docker isolado e testes unitários básicos
 - [ ] Integração real no Windows com Docker
 
-## v0.2 — Segurança e robustez
-- [ ] Limpeza de contêineres em timeout e interrupção
+## v0.2 — Segurança e robustez (branch feature/v02-deployment-readiness)
+- [x] Implementação inicial de remoção de contêineres em timeout (teste real pendente)
 - [ ] Rate limiting, auditoria, sessões e autenticação adicional
 - [ ] Testes multiusuário, ZIPs malformados e isolamento
 - [ ] Política de retenção, backup e restauração

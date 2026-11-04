@@ -1,1 +1,14 @@
-{% extends 'base.html' %}{% block content %}<article><h2>Acessar laboratório</h2><form method="post"><input type="hidden" name="_csrf" value="{{ csrf() }}"><label>Usuário</label><input name="username" required autocomplete="username"><label>Senha</label><input name="password" type="password" required autocomplete="current-password"><p><button>Entrar</button></p></form></article>{% endblock %}
+{% extends 'base.html' %}
+{% block title %}Entrar | LabGateway{% endblock %}
+{% block content %}
+<div class="loginbox panel">
+  <h1>Acesso ao laboratório</h1>
+  <p class="intro">Entre com a conta fornecida pelo responsável da disciplina.</p>
+  <form method="post">
+    <input type="hidden" name="_csrf" value="{{ csrf() }}">
+    <div class="field"><label for="username">Usuário</label><input id="username" name="username" type="text" required autocomplete="username"></div>
+    <div class="field"><label for="password">Senha</label><input id="password" name="password" type="password" required autocomplete="current-password"></div>
+    <button class="button" type="submit">Entrar</button>
+  </form>
+</div>
+{% endblock %}

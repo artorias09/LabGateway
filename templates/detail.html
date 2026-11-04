@@ -1,1 +1,33 @@
-{% extends 'base.html' %}{% block content %}<p><a href="{{url_for('index')}}">← Voltar</a></p><article><h2>{{item.title}}</h2><small>Grupo: {{item.username}} · Enviado em {{item.created_at}}</small>{% if session.role=='teacher' %}<form method="post" action="{{url_for('queue',sid=item.id)}}"><input type="hidden" name="_csrf" value="{{csrf()}}"><p><button>Solicitar execução</button></p></form>{% endif %}</article><article><h2>Execuções</h2>{% for r in runs %}<h3>#{{r.id}} · {{r.status}}</h3><small>{{r.started_at or 'Na fila'}} / {{r.finished_at or 'Em andamento'}}</small><pre>{{r.output}}</pre>{% else %}<p>Aguardando avaliação do professor.</p>{% endfor %}</article>{% endblock %}
+{% extends 'base.html' %}
+{% block title %}{{ item.title }} | LabGateway{% endblock %}
+{% block content %}
+<p class="breadcrumbs"><a href="{{ url_for('index') }}">Projetos</a> / #{{item.id}}</p>
+<h1>{{ item.title }}</h1>
+<p class="intro">Enviado por {{item.username}} em {{item.created_at}}</p>
+<div class="grid">
+  <section class="panel">
+    <h2>Avaliação</h2>
+    <p class="hint">O código será executado em ambiente separado, sem acesso à rede ou aos dispositivos do servidor. A saída apresentada abaixo não determina se o exercício está correto.</p>
+    {% if session.role=='teacher' %}
+      <form action="{{url_for('queue',sid=item.id)}}" method="post">
+        <input type="hidden" name="_csrf" value="{{csrf()}}">
+        <button class="button" type="submit" {% if pending %}disabled title="Já existe uma execução na fila"{% endif %}>{{ 'Execução em andamento' if pending else 'Executar projeto' }}</button>
+      </form>
+    {% else %}
+      <p class="meta">O professor pode solicitar a execução deste projeto.</p>
+    {% endif %}
+  </section>
+  <section class="panel">
+    <div class="runhead"><h2>Execuções</h2><a href="{{url_for('detail',sid=item.id)}}">Atualizar resultados</a></div>
+    <div class="runs">
+      {% for run in runs %}
+      <article class="run">
+        <div class="runhead"><h3>Execução #{{run.id}}</h3><span class="status {{run.status}}">{{status_label(run.status)}}</span></div>
+        <p class="meta">{{run.started_at or 'Aguardando na fila'}}{% if run.finished_at %} | Encerrada em {{run.finished_at}}{% endif %}</p>
+        {% if run.output %}<pre class="log">{{run.output}}</pre>{% elif run.status in ('queued','running') %}<p class="hint">A execução ainda não terminou. Atualize a página para consultar o resultado.</p>{% else %}<p class="hint">Nenhuma saída registrada.</p>{% endif %}
+      </article>
+      {% else %}<p class="empty">Ainda não há execuções registradas.</p>{% endfor %}
+    </div>
+  </section>
+</div>
+{% endblock %}
