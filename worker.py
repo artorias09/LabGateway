@@ -3,7 +3,7 @@ import argparse
 import sys
 import shutil
 import subprocess
-import tempfile
+import threading
 import time
 import uuid
 from pathlib import Path
@@ -34,6 +34,49 @@ def _cleanup_container(name):
         return False
 
 
+def _run_bounded(cmd):
+    """Drain stdout continuously without allowing unbounded memory/disk usage."""
+    proc = subprocess.Popen(
+        cmd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+    )
+    chunks = []
+    total = [0]
+    truncated = [False]
+
+    def drain():
+        while True:
+            data = proc.stdout.read(16384)
+            if not data:
+                break
+            if total[0] < OUTPUT_LIMIT:
+                piece = data[:OUTPUT_LIMIT - total[0]]
+                chunks.append(piece)
+                total[0] += len(piece)
+                if len(piece) < len(data):
+                    truncated[0] = True
+            else:
+                truncated[0] = True
+
+    thread = threading.Thread(target=drain, daemon=True, name="labgateway-output")
+    thread.start()
+    try:
+        code = proc.wait(timeout=TIMEOUT_SECONDS)
+        thread.join(timeout=3)
+        return code, b"".join(chunks), truncated[0]
+    except subprocess.TimeoutExpired:
+        proc.terminate()
+        try:
+            proc.wait(timeout=2)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait(timeout=2)
+        raise
+    finally:
+        if proc.stdout:
+            proc.stdout.close()
+
+
 def run_container(path: str) -> tuple[str, str]:
     if not shutil.which("docker"):
         return "error", "Docker indisponível; execução NÃO realizada."
@@ -46,6 +89,7 @@ def run_container(path: str) -> tuple[str, str]:
     cmd = [
         "docker", "run", "--rm", "--name", name,
         "--network", "none", "--read-only", "--ipc", "none",
+        "--log-driver", "none",
         "--cap-drop", "ALL", "--security-opt", "no-new-privileges",
         "--memory", "128m", "--memory-swap", "128m", "--cpus", "0.5",
         "--pids-limit", "32", "--user", "65534:65534",
@@ -55,25 +99,18 @@ def run_container(path: str) -> tuple[str, str]:
         "--workdir", "/submission", "--pull", "never", IMAGE,
         "python", "-B", "-I", "main.py",
     ]
-    # Redirect child output to disk-backed temporary file, avoiding unbounded RAM.
     try:
-        with tempfile.TemporaryFile() as capture:
-            try:
-                result = subprocess.run(
-                    cmd, stdin=subprocess.DEVNULL, stdout=capture,
-                    stderr=subprocess.STDOUT, timeout=TIMEOUT_SECONDS,
-                    check=False,
-                )
-            except subprocess.TimeoutExpired:
-                if not _cleanup_container(name):
-                    return "error", "ALERTA: não foi possível confirmar remoção do contêiner. Suspenda novas execuções e verifique Docker."
-                return "timeout", "Limite de execução excedido; contêiner removido."
-            capture.seek(0)
-            raw = capture.read(OUTPUT_LIMIT + 1)
-            output = raw[:OUTPUT_LIMIT].decode("utf-8", "replace")
-            if len(raw) > OUTPUT_LIMIT:
-                output += "\n[saída truncada]"
-            return ("passed" if result.returncode == 0 else "failed"), output
+        code, raw, truncated = _run_bounded(cmd)
+        output = raw.decode("utf-8", "replace")
+        if truncated:
+            output += "\\n[saída truncada]"
+        if code != 0 and not output:
+            output = f"Processo finalizado com código {code}."
+        return ("passed" if code == 0 else "failed"), output
+    except subprocess.TimeoutExpired:
+        if not _cleanup_container(name):
+            return "error", "ALERTA: não foi possível confirmar remoção do contêiner. Suspenda novas execuções e verifique Docker."
+        return "timeout", "Limite de execução excedido; contêiner removido."
     except Exception as exc:
         if not _cleanup_container(name):
             return "error", "ALERTA: falha inesperada e estado do contêiner desconhecido. Verifique Docker."
