@@ -34,13 +34,15 @@ class WorkerTests(unittest.TestCase):
                 run.side_effect = [
                     SimpleNamespace(returncode=0),
                     SimpleNamespace(returncode=1),
+                    SimpleNamespace(returncode=0),
                 ]
                 status, msg = worker.run_container(str(source))
                 self.assertEqual(status, "timeout")
                 self.assertIn("removido", msg)
-                self.assertEqual(run.call_count, 2)
+                self.assertEqual(run.call_count, 3)
                 self.assertEqual(run.call_args_list[0].args[0][1:3], ["rm", "-f"])
                 self.assertEqual(run.call_args_list[1].args[0][1], "inspect")
+                self.assertEqual(run.call_args_list[2].args[0][1], "info")
 
     def test_failed_cleanup_fails_closed(self):
         with tempfile.TemporaryDirectory() as tmp:
