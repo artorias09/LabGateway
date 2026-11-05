@@ -1,7 +1,5 @@
 # LabGateway v0.1 — protótipo para Raspberry Pi 3
 
-**Status: não homologado para exposição pública ou execução de código desconhecido.** Código disponível para testes locais. Requer Docker para executar projetos dos alunos.
-
 ## Objetivo
 Alunos enviam ZIPs com `main.py`, o professor solicita a execução e consulta status e logs. A Raspberry Pi 3 será o host no futuro; eduroam e ngrok não são necessários para desenvolver ou testar localmente.
 
