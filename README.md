@@ -43,7 +43,7 @@ Docker não é garantia absoluta de isolamento para código hostil. Ainda faltam
 Veja [arquitetura](docs/ARCHITECTURE.md) e [roadmap](docs/ROADMAP.md).
 
 
-## Preflight da Raspberry sem HDMI
+## Reaproveitamento do forno (recomendado)\n\nO projeto **não** reconfigura eduroam, roteamento, duas interfaces Wi-Fi, ngrok ou o serviço do forno. A auditoria somente leitura em `scripts/audit_forno_reuse.sh` identifica o que já está operando. Consulte [REAPROVEITAMENTO_FORNO.md](docs/REAPROVEITAMENTO_FORNO.md). A porta 5000 continua reservada para o forno e a aplicação nova usa 5001. Docker é necessário para executar código de alunos; não será instalado nem forçado no OS antigo sem diagnóstico.\n\n## Preflight da Raspberry sem HDMI
 
 Veja [roteiro de amanhã](docs/AMANHA_RASPBERRY.md) e [decisões de rede](docs/DECISOES.md). Na máquina: `bash scripts/preflight.sh`. O script é somente leitura e não altera o servidor do forno.
 
