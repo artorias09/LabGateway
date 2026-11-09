@@ -78,6 +78,21 @@ class WebFlowTests(unittest.TestCase):
             row = db.execute("SELECT status FROM runs WHERE submission_id=?", (sid,)).fetchone()
         self.assertEqual(row["status"], "queued")
 
+    def test_teacher_can_download_project_named_from_title(self):
+        self.login("grupo01", "long-password-student")
+        self.upload()
+        with store.connect() as db:
+            sid = db.execute("SELECT id FROM submissions LIMIT 1").fetchone()["id"]
+        self.assertEqual(self.client.get(f"/project/{sid}/download").status_code, 403)
+        self.client.post("/logout", data={"_csrf": self.token()})
+        self.login("professor", "long-password-teacher")
+        r = self.client.get(f"/project/{sid}/download")
+        self.assertEqual(r.status_code, 200)
+        self.assertIn("attachment;", r.headers.get("Content-Disposition", ""))
+        self.assertIn("Projeto_teste.zip", r.headers.get("Content-Disposition", ""))
+        with zipfile.ZipFile(io.BytesIO(r.data)) as z:
+            self.assertEqual(z.read("main.py"), b"print(42)\n")
+
     def test_group_cannot_read_other_group_submission(self):
         self.login("grupo01", "long-password-student")
         self.upload()
