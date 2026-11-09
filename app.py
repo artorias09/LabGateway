@@ -1,10 +1,14 @@
 """LabGateway HTTP interface. Run with gunicorn in deployment."""
+import io
 import os
 import secrets
 import uuid
+import zipfile
+from pathlib import Path
 from functools import wraps
-from flask import Flask, request, redirect, session, render_template, flash, abort, url_for
+from flask import Flask, request, redirect, session, render_template, flash, abort, url_for, send_file
 from werkzeug.exceptions import RequestEntityTooLarge
+from werkzeug.utils import secure_filename
 from core import validate_submission, InvalidSubmission
 import store
 
@@ -142,6 +146,40 @@ def queue(sid):
             db.execute("INSERT INTO runs(submission_id,status) VALUES (?,'queued')",(sid,))
             flash('Execução adicionada à fila.')
     return redirect(url_for('detail',sid=sid))
+
+
+@app.get('/project/<int:sid>/download')
+@teacher_only
+def download_project(sid):
+    with store.connect() as db:
+        item=db.execute('SELECT s.*,u.username FROM submissions s JOIN users u ON u.id=s.user_id WHERE s.id=?',(sid,)).fetchone()
+    if item is None:
+        abort(404)
+    source = Path(item['path']).resolve()
+    try:
+        source.relative_to(store.UPLOAD.resolve())
+    except ValueError:
+        abort(400, 'Caminho de projeto inválido')
+    if not source.is_dir():
+        abort(404, 'Arquivos do projeto não encontrados')
+
+    out = io.BytesIO()
+    with zipfile.ZipFile(out, 'w', compression=zipfile.ZIP_DEFLATED) as archive:
+        for file_path in sorted(source.rglob('*')):
+            if file_path.is_symlink():
+                abort(400, 'Projeto contém link simbólico inesperado')
+            if file_path.is_file():
+                archive.write(file_path, file_path.relative_to(source).as_posix())
+    out.seek(0)
+
+    base = secure_filename(item['title']).strip('._-') or f'projeto-{sid}'
+    return send_file(
+        out,
+        mimetype='application/zip',
+        as_attachment=True,
+        download_name=f'{base}.zip',
+        max_age=0,
+    )
 
 @app.get('/project/<int:sid>')
 @require_login
