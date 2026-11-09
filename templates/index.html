@@ -2,15 +2,15 @@
 {% block title %}Projetos | LabGateway{% endblock %}
 {% block content %}
 <h1>Projetos da disciplina</h1>
-<p class="intro">{% if session.role=='teacher' %}Consulte os envios dos grupos e selecione o projeto que deseja executar.{% else %}Envie o código do grupo e acompanhe os resultados da avaliação.{% endif %}</p>
+<p class="intro">{% if session.role=='teacher' %}Consulte os envios, baixe os arquivos e solicite a validação técnica dos projetos.{% else %}Envie o projeto e acompanhe a validação técnica realizada pelo servidor.{% endif %}</p>
 <div class="grid">
   <section class="panel">
     <h2>Enviar projeto</h2>
     <form method="post" action="{{url_for('upload')}}" enctype="multipart/form-data">
       <input type="hidden" name="_csrf" value="{{csrf()}}">
-      <div class="field"><label for="title">Nome do projeto</label><input type="text" id="title" name="title" maxlength="100" placeholder="Ex.: Exercício 2" required></div>
+      <div class="field"><label for="title">Nome do projeto</label><input type="text" id="title" name="title" maxlength="100" placeholder="Ex.: Kelvin Thiago" required></div>
       <div class="field"><label for="file">Arquivo ZIP</label><input id="file" name="file" type="file" accept=".zip" required></div>
-      <p class="hint">Até 2 MB. Coloque o arquivo <span class="mono">main.py</span> na raiz do ZIP. São aceitos arquivos .py, .txt, .json, .csv e .md.</p>
+      <p class="hint">Até 2 MB. São aceitos projetos Python, C, C++ e ESP32/Arduino, além de arquivos auxiliares .txt, .json, .csv e .md.</p>
       <button class="button" type="submit">Enviar projeto</button>
     </form>
   </section>
