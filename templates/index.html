@@ -24,7 +24,7 @@
         <td><a href="{{url_for('detail',sid=item.id)}}">{{item.title}}</a><div class="meta">#{{item.id}}</div></td>
         <td>{{item.username}}</td>
         <td><span class="status {{ item.status or '' }}">{{ status_label(item.status) }}</span></td>
-        <td><a href="{{url_for('detail',sid=item.id)}}">Abrir</a></td>
+        <td><a href="{{url_for('detail',sid=item.id)}}">Abrir</a>{% if session.role=='teacher' %} · <a href="{{url_for('download_project',sid=item.id)}}">Baixar</a>{% endif %}</td>
       </tr>
       {% else %}<tr><td colspan="4" class="empty">Nenhum projeto enviado.</td></tr>{% endfor %}
       </tbody></table></div>
