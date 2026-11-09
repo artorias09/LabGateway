@@ -9,7 +9,7 @@ from functools import wraps
 from flask import Flask, request, redirect, session, render_template, flash, abort, url_for, send_file
 from werkzeug.exceptions import RequestEntityTooLarge
 from werkzeug.utils import secure_filename
-from core import validate_submission, InvalidSubmission
+from core import validate_submission, InvalidSubmission, detect_project_type_from_path
 import store
 
 app = Flask(__name__)
@@ -190,7 +190,8 @@ def detail(sid):
         if session['role']!='teacher' and item['user_id']!=session['uid']: abort(403)
         runs=db.execute('SELECT * FROM runs WHERE submission_id=? ORDER BY id DESC LIMIT 20',(sid,)).fetchall()
     pending = any(r['status'] in ('queued','running') for r in runs)
-    return render_template('detail.html',item=item,runs=runs,pending=pending)
+    project_type = detect_project_type_from_path(item['path'])
+    return render_template('detail.html',item=item,runs=runs,pending=pending,project_type=project_type)
 
 if __name__=='__main__':
     app.run(host='127.0.0.1',port=int(os.environ.get('LAB_PORT', '5001')),debug=False)
