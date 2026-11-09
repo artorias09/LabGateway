@@ -50,3 +50,21 @@ Veja [arquitetura](docs/ARCHITECTURE.md) e [roadmap](docs/ROADMAP.md).
 Veja [roteiro de amanhã](docs/AMANHA_RASPBERRY.md) e [decisões de rede](docs/DECISOES.md). Na máquina: `bash scripts/preflight.sh`. O script é somente leitura e não altera o servidor do forno.
 
 O conserto de timeout no worker está na branch `feature/v02-deployment-readiness` e aguarda testes reais com Docker antes de integração na main.
+
+
+## Validação técnica de projetos
+
+A versão em desenvolvimento identifica projetos Python, C, C++ e ESP32/Arduino.
+
+- Python: executado em contêiner isolado.
+- C e C++: compilados com avisos habilitados e executados em contêiner isolado.
+- ESP32/Arduino: aceitos e identificados; a toolchain específica ainda não é executada automaticamente.
+- O professor pode baixar o projeto recebido como ZIP usando o título informado pelo aluno como nome do arquivo.
+
+Antes de validar C/C++ na Raspberry, construa uma vez a imagem local:
+
+```bash
+sudo bash scripts/prepare_runners.sh
+```
+
+O runner não tem rede durante a avaliação e o código não é executado diretamente no host.
