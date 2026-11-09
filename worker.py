@@ -2,6 +2,7 @@
 import argparse
 import sys
 import shutil
+import shlex
 import subprocess
 import threading
 import time
@@ -9,8 +10,10 @@ import uuid
 from pathlib import Path
 
 import store
+from core import detect_project_type_from_path
 
-IMAGE = "python:3.12-alpine"
+PYTHON_IMAGE = "python:3.12-alpine"
+CPP_IMAGE = "labgateway-cpp:1"
 TIMEOUT_SECONDS = 15
 OUTPUT_LIMIT = 12_000
 DOCKER_COMMAND_TIMEOUT = 8
@@ -84,16 +87,8 @@ def _run_bounded(cmd):
             proc.stdout.close()
 
 
-def run_container(path: str) -> tuple[str, str]:
-    if not shutil.which("docker"):
-        return "error", "Docker indisponível; execução NÃO realizada."
-    source = Path(path).resolve()
-    if source.parent != store.UPLOAD.resolve() or not source.is_dir():
-        return "error", "Caminho de submissão recusado."
-    if (source / "main.py").is_symlink() or not (source / "main.py").is_file():
-        return "error", "Projeto inválido: main.py ausente ou link simbólico."
-    name = "labgateway-" + uuid.uuid4().hex
-    cmd = [
+def _docker_base(name, source, image):
+    return [
         "docker", "run", "--rm", "--name", name,
         "--network", "none", "--read-only", "--ipc", "none",
         "--log-driver", "none",
@@ -101,18 +96,80 @@ def run_container(path: str) -> tuple[str, str]:
         "--memory", "128m", "--memory-swap", "128m", "--cpus", "0.5",
         "--pids-limit", "32", "--user", "65534:65534",
         "--ulimit", "nofile=64:64",
-        "--tmpfs", "/tmp:rw,noexec,nosuid,size=16m",
+        "--tmpfs", "/tmp:rw,exec,nosuid,size=32m",
         "--mount", f"type=bind,src={source},dst=/submission,readonly",
-        "--workdir", "/submission", "--pull", "never", IMAGE,
-        "python", "-B", "-I", "main.py",
+        "--workdir", "/submission", "--pull", "never", image,
     ]
+
+
+def _source_files(source, suffixes):
+    return sorted(
+        p.relative_to(source).as_posix()
+        for p in source.rglob("*")
+        if p.is_file() and not p.is_symlink() and p.suffix.lower() in suffixes
+    )
+
+
+def _command_for(project_type, source):
+    if project_type == "python":
+        if not (source / "main.py").is_file() or (source / "main.py").is_symlink():
+            return None, None, "Projeto Python inválido: main.py ausente."
+        return PYTHON_IMAGE, ["python", "-B", "-I", "main.py"], None
+
+    if project_type == "c":
+        sources = _source_files(source, {".c"})
+        if not sources:
+            return None, None, "Projeto C sem arquivos fonte."
+        quoted = " ".join(shlex.quote("/submission/" + p) for p in sources)
+        command = f"gcc -std=c17 -Wall -Wextra -O0 {quoted} -o /tmp/labgateway-app && /tmp/labgateway-app"
+        return CPP_IMAGE, ["sh", "-lc", command], None
+
+    if project_type == "cpp":
+        sources = _source_files(source, {".cpp", ".cc", ".cxx"})
+        if not sources:
+            return None, None, "Projeto C++ sem arquivos fonte."
+        quoted = " ".join(shlex.quote("/submission/" + p) for p in sources)
+        command = f"g++ -std=c++17 -Wall -Wextra -O0 {quoted} -o /tmp/labgateway-app && /tmp/labgateway-app"
+        return CPP_IMAGE, ["sh", "-lc", command], None
+
+    if project_type == "esp32-arduino":
+        return None, None, (
+            "Projeto ESP32/Arduino identificado. O código foi aceito e armazenado, "
+            "mas a toolchain ESP32 ainda não está configurada neste servidor. "
+            "Nenhum firmware foi gravado em hardware."
+        )
+
+    return None, None, "Tipo de projeto não reconhecido."
+
+
+def run_container(path: str) -> tuple[str, str]:
+    if not shutil.which("docker"):
+        return "error", "Docker indisponível; execução NÃO realizada."
+
+    source = Path(path).resolve()
+    if source.parent != store.UPLOAD.resolve() or not source.is_dir():
+        return "error", "Caminho de submissão recusado."
+
+    project_type = detect_project_type_from_path(source)
+    image, command, diagnostic = _command_for(project_type, source)
+    if diagnostic:
+        return ("failed" if project_type == "esp32-arduino" else "error"), diagnostic
+
+    name = "labgateway-" + uuid.uuid4().hex
+    cmd = _docker_base(name, source, image) + command
     try:
         code, raw, truncated = _run_bounded(cmd)
         output = raw.decode("utf-8", "replace")
+        header = {
+            "python": "Tipo detectado: Python\n",
+            "c": "Tipo detectado: C\nCompilação e execução isoladas.\n",
+            "cpp": "Tipo detectado: C++\nCompilação e execução isoladas.\n",
+        }.get(project_type, "")
+        output = header + output
         if truncated:
-            output += "\\n[saída truncada]"
-        if code != 0 and not output:
-            output = f"Processo finalizado com código {code}."
+            output += "\n[saída truncada]"
+        if code != 0 and output == header:
+            output += f"Processo finalizado com código {code}."
         return ("passed" if code == 0 else "failed"), output
     except subprocess.TimeoutExpired:
         if not _cleanup_container(name):
