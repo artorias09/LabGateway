@@ -75,6 +75,36 @@ class WorkerTests(unittest.TestCase):
             self.assertEqual(status, "passed")
             self.assertIn("truncada", msg)
 
+    def test_cpp_build_command_uses_cpp_image(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "abc"
+            source.mkdir()
+            (source / "main.cpp").write_text("int main(){return 0;}")
+            with patch.object(worker.store, "UPLOAD", root), \
+                 patch("worker.shutil.which", return_value="/usr/bin/docker"), \
+                 patch("worker._run_bounded", return_value=(0, b"", False)) as bounded:
+                status, msg = worker.run_container(str(source))
+            self.assertEqual(status, "passed")
+            self.assertIn("C++", msg)
+            command = bounded.call_args.args[0]
+            self.assertIn(worker.CPP_IMAGE, command)
+            self.assertIn("g++", command[-1])
+
+    def test_arduino_is_detected_without_fake_execution(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "abc"
+            source.mkdir()
+            (source / "projeto.ino").write_text("void setup(){}\nvoid loop(){}")
+            with patch.object(worker.store, "UPLOAD", root), \
+                 patch("worker.shutil.which", return_value="/usr/bin/docker"), \
+                 patch("worker._run_bounded") as bounded:
+                status, msg = worker.run_container(str(source))
+            self.assertEqual(status, "failed")
+            self.assertIn("ESP32/Arduino", msg)
+            bounded.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()
