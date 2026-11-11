@@ -68,3 +68,12 @@ sudo bash scripts/prepare_runners.sh
 ```
 
 O runner não tem rede durante a avaliação e o código não é executado diretamente no host.
+
+
+## Dados experimentais
+
+A interface possui uma área separada para registrar resultados experimentais. Cada envio pode ser associado a um projeto e inclui nome do ensaio, descrição, unidades e arquivo CSV ou JSON.
+
+O servidor registra no SQLite o responsável, projeto relacionado, formato, número de registros, nomes das colunas, caminho do arquivo e data do envio. O arquivo original permanece armazenado para download e a interface mostra uma prévia de até 20 registros.
+
+Essa estrutura deixa o banco pronto para uma evolução futura em que bancadas ou nós de rede alimentem os mesmos registros automaticamente.
