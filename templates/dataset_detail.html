@@ -1,0 +1,45 @@
+{% extends 'base.html' %}
+{% block title %}{{ item.title }} | LabGateway{% endblock %}
+{% block content %}
+<p class="breadcrumbs"><a href="{{ url_for('datasets') }}">Dados experimentais</a> / #{{ item.id }}</p>
+<h1>{{ item.title }}</h1>
+<p class="intro">Enviado por {{ item.username }} em {{ item.created_at }}</p>
+
+<div class="grid">
+  <section class="panel">
+    <h2>Informações do ensaio</h2>
+    <dl class="facts">
+      <div><dt>Projeto</dt><dd>{{ item.project_title or 'Sem vínculo' }}</dd></div>
+      <div><dt>Arquivo</dt><dd>{{ item.original_name }}</dd></div>
+      <div><dt>Formato</dt><dd>{{ item.file_type|upper }}</dd></div>
+      <div><dt>Registros</dt><dd>{{ item.row_count }}</dd></div>
+      <div><dt>Variáveis</dt><dd>{{ columns|join(', ') if columns else 'Não identificadas' }}</dd></div>
+      <div><dt>Unidades</dt><dd>{{ item.units or 'Não informadas' }}</dd></div>
+    </dl>
+    {% if item.description %}
+      <h3>Descrição</h3>
+      <p>{{ item.description }}</p>
+    {% endif %}
+    <p><a class="button" href="{{ url_for('download_dataset',did=item.id) }}">Baixar arquivo original</a></p>
+  </section>
+
+  <section class="panel">
+    <h2>Prévia dos dados</h2>
+    {% if preview and columns %}
+      <p class="hint">Exibindo até 20 registros. O arquivo original permanece armazenado sem alterações.</p>
+      <div class="tablewrap data-preview">
+        <table>
+          <thead><tr>{% for column in columns %}<th>{{ column }}</th>{% endfor %}</tr></thead>
+          <tbody>
+          {% for row in preview %}
+            <tr>{% for column in columns %}<td>{{ row.get(column, '') }}</td>{% endfor %}</tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p class="empty">O arquivo não possui registros para pré-visualização.</p>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}
