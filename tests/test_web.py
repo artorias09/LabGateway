@@ -156,6 +156,24 @@ class WebFlowTests(unittest.TestCase):
         self.assertEqual(self.client.get(f"/dataset/{did}").status_code, 403)
         self.assertEqual(self.client.get(f"/dataset/{did}/download").status_code, 403)
 
+    def test_linked_dataset_appears_on_project_page(self):
+        self.login("grupo01", "long-password-student")
+        self.upload()
+        with store.connect() as db:
+            sid = db.execute("SELECT id FROM submissions LIMIT 1").fetchone()["id"]
+        self.client.post("/datasets/upload", data={
+            "_csrf": self.token(),
+            "title": "Curva do sensor",
+            "description": "",
+            "units": "tempo (s), tensao (V)",
+            "submission_id": str(sid),
+            "file": (io.BytesIO(b"tempo,tensao\n0,1.0\n"), "curva.csv"),
+        }, content_type="multipart/form-data")
+        project = self.client.get(f"/project/{sid}")
+        self.assertEqual(project.status_code, 200)
+        self.assertIn(b"Curva do sensor", project.data)
+        self.assertIn(b"Dados experimentais vinculados", project.data)
+
 
 if __name__ == "__main__":
     unittest.main()
