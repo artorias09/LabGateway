@@ -1,5 +1,6 @@
 """LabGateway HTTP interface. Run with gunicorn in deployment."""
 import io
+import json
 import os
 import secrets
 import uuid
@@ -10,13 +11,14 @@ from flask import Flask, request, redirect, session, render_template, flash, abo
 from werkzeug.exceptions import RequestEntityTooLarge
 from werkzeug.utils import secure_filename
 from core import validate_submission, InvalidSubmission, detect_project_type_from_path
+from datasets import analyze_dataset, analyze_dataset_file, InvalidDataset, MAX_DATA_BYTES
 import store
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('LAB_SECRET_KEY', '')
 if len(app.secret_key) < 32:
     raise RuntimeError('Defina LAB_SECRET_KEY (>= 32 caracteres aleatórios)')
-app.config.update(MAX_CONTENT_LENGTH=2*1024*1024+100*1024,
+app.config.update(MAX_CONTENT_LENGTH=MAX_DATA_BYTES+100*1024,
                   SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE='Lax',
                   SESSION_COOKIE_SECURE=os.environ.get('LAB_SECURE_COOKIE','0')=='1')
 store.init()
@@ -106,6 +108,142 @@ def index():
                 (SELECT status FROM runs WHERE submission_id=s.id ORDER BY id DESC LIMIT 1) AS status
                 FROM submissions s JOIN users u ON u.id=s.user_id WHERE s.user_id=? ORDER BY s.id DESC LIMIT 100''',(session['uid'],)).fetchall()
     return render_template('index.html',items=items)
+
+
+@app.get('/datasets')
+@require_login
+def datasets():
+    with store.connect() as db:
+        if session['role'] == 'teacher':
+            items = db.execute('''SELECT d.*,u.username,s.title AS project_title
+                FROM datasets d JOIN users u ON u.id=d.user_id
+                LEFT JOIN submissions s ON s.id=d.submission_id
+                ORDER BY d.id DESC LIMIT 200''').fetchall()
+            projects = db.execute('SELECT id,title FROM submissions ORDER BY id DESC LIMIT 200').fetchall()
+        else:
+            items = db.execute('''SELECT d.*,u.username,s.title AS project_title
+                FROM datasets d JOIN users u ON u.id=d.user_id
+                LEFT JOIN submissions s ON s.id=d.submission_id
+                WHERE d.user_id=? ORDER BY d.id DESC LIMIT 200''',(session['uid'],)).fetchall()
+            projects = db.execute(
+                'SELECT id,title FROM submissions WHERE user_id=? ORDER BY id DESC LIMIT 200',
+                (session['uid'],)
+            ).fetchall()
+    return render_template('datasets.html',items=items,projects=projects)
+
+
+@app.post('/datasets/upload')
+@require_login
+def upload_dataset():
+    title = request.form.get('title','').strip()
+    description = request.form.get('description','').strip()
+    units = request.form.get('units','').strip()
+    if not 1 <= len(title) <= 100:
+        abort(400,'Nome do ensaio inválido')
+    if len(description) > 500 or len(units) > 200:
+        abort(400,'Metadados muito longos')
+
+    submission_id = request.form.get('submission_id','').strip()
+    linked_id = None
+    if submission_id:
+        try:
+            linked_id = int(submission_id)
+        except ValueError:
+            abort(400,'Projeto relacionado inválido')
+        with store.connect() as db:
+            project = db.execute('SELECT id,user_id FROM submissions WHERE id=?',(linked_id,)).fetchone()
+        if project is None:
+            abort(400,'Projeto relacionado não encontrado')
+        if session['role'] != 'teacher' and project['user_id'] != session['uid']:
+            abort(403)
+
+    f = request.files.get('file')
+    filename = secure_filename(f.filename or '') if f else ''
+    if not f or Path(filename).suffix.lower() not in ('.csv','.json'):
+        abort(400,'Envie um arquivo .csv ou .json')
+    raw = f.read(MAX_DATA_BYTES + 1)
+    try:
+        summary = analyze_dataset(raw, filename)
+    except InvalidDataset as err:
+        abort(400,str(err))
+
+    stored_name = uuid.uuid4().hex + Path(filename).suffix.lower()
+    path = store.DATASET_UPLOAD / stored_name
+    path.write_bytes(raw)
+    path.chmod(0o640)
+
+    try:
+        with store.connect() as db:
+            db.execute('''INSERT INTO datasets(
+                user_id,submission_id,title,description,units,original_name,path,
+                file_type,row_count,columns_json,created_at
+            ) VALUES(?,?,?,?,?,?,?,?,?,?,?)''',(
+                session['uid'],linked_id,title,description,units,filename,str(path.resolve()),
+                summary['file_type'],summary['row_count'],
+                json.dumps(summary['columns'],ensure_ascii=False),store.now()
+            ))
+    except Exception:
+        path.unlink(missing_ok=True)
+        raise
+
+    flash('Dados experimentais registrados.')
+    return redirect(url_for('datasets'))
+
+
+def _dataset_row(did):
+    with store.connect() as db:
+        item = db.execute('''SELECT d.*,u.username,s.title AS project_title
+            FROM datasets d JOIN users u ON u.id=d.user_id
+            LEFT JOIN submissions s ON s.id=d.submission_id
+            WHERE d.id=?''',(did,)).fetchone()
+    if item is None:
+        abort(404)
+    if session['role'] != 'teacher' and item['user_id'] != session['uid']:
+        abort(403)
+    return item
+
+
+@app.get('/dataset/<int:did>')
+@require_login
+def dataset_detail(did):
+    item = _dataset_row(did)
+    path = Path(item['path']).resolve()
+    try:
+        path.relative_to(store.DATASET_UPLOAD.resolve())
+    except ValueError:
+        abort(400,'Caminho de dados inválido')
+    if not path.is_file() or path.is_symlink():
+        abort(404,'Arquivo de dados não encontrado')
+    try:
+        summary = analyze_dataset_file(path)
+    except InvalidDataset:
+        summary = {'columns': json.loads(item['columns_json']), 'preview': []}
+    return render_template(
+        'dataset_detail.html',
+        item=item,
+        columns=summary['columns'],
+        preview=summary['preview'],
+    )
+
+
+@app.get('/dataset/<int:did>/download')
+@require_login
+def download_dataset(did):
+    item = _dataset_row(did)
+    path = Path(item['path']).resolve()
+    try:
+        path.relative_to(store.DATASET_UPLOAD.resolve())
+    except ValueError:
+        abort(400,'Caminho de dados inválido')
+    if not path.is_file() or path.is_symlink():
+        abort(404,'Arquivo de dados não encontrado')
+    return send_file(
+        path,
+        as_attachment=True,
+        download_name=item['original_name'],
+        max_age=0,
+    )
+
 
 @app.post('/upload')
 @require_login
