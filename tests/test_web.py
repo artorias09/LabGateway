@@ -27,10 +27,13 @@ class WebFlowTests(unittest.TestCase):
         root = Path(self.temp.name)
         self.dbpatch = patch.object(store, "DB", root / "gateway.sqlite3")
         self.uppatch = patch.object(store, "UPLOAD", root / "uploads")
+        self.datapatch = patch.object(store, "DATASET_UPLOAD", root / "datasets")
         self.dbpatch.start()
         self.uppatch.start()
+        self.datapatch.start()
         self.addCleanup(self.dbpatch.stop)
         self.addCleanup(self.uppatch.stop)
+        self.addCleanup(self.datapatch.stop)
         store.init()
         store.create_user("professor", "long-password-teacher", "teacher")
         store.create_user("grupo01", "long-password-student", "student")
@@ -109,6 +112,49 @@ class WebFlowTests(unittest.TestCase):
             "file": (io.BytesIO(b"not a zip"), "projeto.zip")
         }, content_type="multipart/form-data")
         self.assertEqual(r.status_code, 400)
+
+    def test_dataset_upload_and_teacher_access(self):
+        self.login("grupo01", "long-password-student")
+        r = self.client.post("/datasets/upload", data={
+            "_csrf": self.token(),
+            "title": "Ensaio temperatura",
+            "description": "Leitura do sensor",
+            "units": "tempo (s), temperatura (C)",
+            "submission_id": "",
+            "file": (io.BytesIO(b"tempo,temp\n0,25.1\n1,25.4\n"), "ensaio.csv"),
+        }, content_type="multipart/form-data")
+        self.assertEqual(r.status_code, 302)
+        with store.connect() as db:
+            row = db.execute("SELECT * FROM datasets LIMIT 1").fetchone()
+        self.assertEqual(row["row_count"], 2)
+        self.assertEqual(row["file_type"], "csv")
+        did = row["id"]
+        self.assertEqual(self.client.get(f"/dataset/{did}").status_code, 200)
+        self.client.post("/logout", data={"_csrf": self.token()})
+        self.login("professor", "long-password-teacher")
+        detail = self.client.get(f"/dataset/{did}")
+        self.assertEqual(detail.status_code, 200)
+        self.assertIn(b"Ensaio temperatura", detail.data)
+        download = self.client.get(f"/dataset/{did}/download")
+        self.assertEqual(download.status_code, 200)
+        self.assertIn("ensaio.csv", download.headers.get("Content-Disposition", ""))
+
+    def test_other_group_cannot_read_dataset(self):
+        self.login("grupo01", "long-password-student")
+        self.client.post("/datasets/upload", data={
+            "_csrf": self.token(),
+            "title": "Dados privados",
+            "description": "",
+            "units": "",
+            "submission_id": "",
+            "file": (io.BytesIO(b"x,y\n1,2\n"), "dados.csv"),
+        }, content_type="multipart/form-data")
+        with store.connect() as db:
+            did = db.execute("SELECT id FROM datasets LIMIT 1").fetchone()["id"]
+        self.client.post("/logout", data={"_csrf": self.token()})
+        self.login("grupo02", "long-password-second")
+        self.assertEqual(self.client.get(f"/dataset/{did}").status_code, 403)
+        self.assertEqual(self.client.get(f"/dataset/{did}/download").status_code, 403)
 
 
 if __name__ == "__main__":
