@@ -76,7 +76,7 @@ def csrf_check():
 
 @app.errorhandler(RequestEntityTooLarge)
 def oversized(e):
-    return 'Arquivo grande demais (máximo 2 MiB).',413
+    return 'Arquivo grande demais para este envio.',413
 
 @app.route('/login',methods=['GET','POST'])
 def login():
@@ -327,9 +327,18 @@ def detail(sid):
         if item is None: abort(404)
         if session['role']!='teacher' and item['user_id']!=session['uid']: abort(403)
         runs=db.execute('SELECT * FROM runs WHERE submission_id=? ORDER BY id DESC LIMIT 20',(sid,)).fetchall()
+        linked_datasets=db.execute('''SELECT d.id,d.title,d.file_type,d.row_count,d.created_at
+            FROM datasets d WHERE d.submission_id=? ORDER BY d.id DESC LIMIT 100''',(sid,)).fetchall()
     pending = any(r['status'] in ('queued','running') for r in runs)
     project_type = detect_project_type_from_path(item['path'])
-    return render_template('detail.html',item=item,runs=runs,pending=pending,project_type=project_type)
+    return render_template(
+        'detail.html',
+        item=item,
+        runs=runs,
+        pending=pending,
+        project_type=project_type,
+        linked_datasets=linked_datasets,
+    )
 
 if __name__=='__main__':
     app.run(host='127.0.0.1',port=int(os.environ.get('LAB_PORT', '5001')),debug=False)
