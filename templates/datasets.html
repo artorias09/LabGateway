@@ -1,0 +1,64 @@
+{% extends 'base.html' %}
+{% block title %}Dados experimentais | LabGateway{% endblock %}
+{% block content %}
+<h1>Dados experimentais</h1>
+<p class="intro">{% if session.role=='teacher' %}Consulte os conjuntos de dados enviados pelos grupos e abra os registros para análise ou download.{% else %}Envie os dados registrados no projeto em CSV ou JSON e mantenha cada ensaio associado ao trabalho correspondente.{% endif %}</p>
+
+<div class="grid">
+  <section class="panel">
+    <h2>Registrar dados</h2>
+    <form method="post" action="{{ url_for('upload_dataset') }}" enctype="multipart/form-data">
+      <input type="hidden" name="_csrf" value="{{ csrf() }}">
+      <div class="field">
+        <label for="dataset-title">Nome do ensaio</label>
+        <input type="text" id="dataset-title" name="title" maxlength="100" placeholder="Ex.: Ensaio 1 - temperatura" required>
+      </div>
+      <div class="field">
+        <label for="project-id">Projeto relacionado</label>
+        <select id="project-id" name="submission_id">
+          <option value="">Sem vínculo</option>
+          {% for project in projects %}
+            <option value="{{ project.id }}">{{ project.title }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="field">
+        <label for="description">Descrição</label>
+        <textarea id="description" name="description" maxlength="500" rows="4" placeholder="Condição do ensaio, sensor utilizado, observações relevantes"></textarea>
+      </div>
+      <div class="field">
+        <label for="units">Unidades ou variáveis</label>
+        <input type="text" id="units" name="units" maxlength="200" placeholder="Ex.: tempo (s), temperatura (°C), tensão (V)">
+      </div>
+      <div class="field">
+        <label for="data-file">Arquivo de dados</label>
+        <input id="data-file" name="file" type="file" accept=".csv,.json" required>
+      </div>
+      <p class="hint">Até 5 MiB. CSV deve possuir cabeçalho. JSON pode ser um objeto, uma lista de objetos ou um objeto com a chave records.</p>
+      <button class="button" type="submit">Enviar dados</button>
+    </form>
+  </section>
+
+  <section class="panel">
+    <h2>{{ 'Dados recebidos' if session.role=='teacher' else 'Meus dados' }}</h2>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Ensaio</th><th>Projeto</th><th>Registros</th><th>Formato</th><th></th></tr></thead>
+        <tbody>
+        {% for item in items %}
+          <tr>
+            <td><a href="{{ url_for('dataset_detail',did=item.id) }}">{{ item.title }}</a><div class="meta">{{ item.username }} | {{ item.created_at }}</div></td>
+            <td>{{ item.project_title or 'Sem vínculo' }}</td>
+            <td>{{ item.row_count }}</td>
+            <td>{{ item.file_type|upper }}</td>
+            <td><a href="{{ url_for('dataset_detail',did=item.id) }}">Abrir</a></td>
+          </tr>
+        {% else %}
+          <tr><td colspan="5" class="empty">Nenhum conjunto de dados enviado.</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+</div>
+{% endblock %}
