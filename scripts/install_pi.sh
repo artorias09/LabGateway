@@ -47,13 +47,13 @@ id -u labrunner >/dev/null 2>&1 || useradd --system --no-create-home --shell /us
 getent group docker >/dev/null || die "Grupo docker inexistente."
 getent group labdata >/dev/null || die "Grupo labdata ausente."
 usermod -a -G docker labrunner
-mkdir -p /opt/labgateway /etc/labgateway /var/lib/labgateway/uploads
+mkdir -p /opt/labgateway /etc/labgateway /var/lib/labgateway/uploads /var/lib/labgateway/datasets
 cp -a "$ROOT/." /opt/labgateway/
 chown -R root:root /opt/labgateway
 chmod -R go-w /opt/labgateway
 chmod 755 /opt/labgateway
 chown -R labweb:labdata /var/lib/labgateway
-chmod 2770 /var/lib/labgateway /var/lib/labgateway/uploads
+chmod 2770 /var/lib/labgateway /var/lib/labgateway/uploads /var/lib/labgateway/datasets
 umask 027
 python3 -m venv /opt/labgateway/.venv || die "python3-venv requerido. Servicos ainda nao foram iniciados."
 /opt/labgateway/.venv/bin/python -m pip install -r /opt/labgateway/requirements.txt
@@ -62,6 +62,7 @@ cat > /etc/labgateway/web.env <<EOF
 LAB_SECRET_KEY=$SECRET
 LAB_DB=/var/lib/labgateway/labgateway.sqlite3
 LAB_UPLOADS=/var/lib/labgateway/uploads
+LAB_DATASETS=/var/lib/labgateway/datasets
 LAB_SECURE_COOKIE=0
 EOF
 chmod 600 /etc/labgateway/web.env
