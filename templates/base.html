@@ -9,8 +9,12 @@
 </head>
 <body>
   <header class="top"><div class="top-inner">
-    <a class="brand" href="{{ url_for('index') }}">LabGateway<small>Ambiente de execução de projetos</small></a>
+    <a class="brand" href="{{ url_for('index') }}">LabGateway<small>Servidor de projetos e dados experimentais</small></a>
     {% if session.uid %}
+      <nav class="nav">
+        <a href="{{ url_for('index') }}" class="{{ 'active' if request.endpoint in ('index','detail','download_project','queue','upload') else '' }}">Projetos</a>
+        <a href="{{ url_for('datasets') }}" class="{{ 'active' if request.endpoint in ('datasets','dataset_detail','download_dataset','upload_dataset') else '' }}">Dados experimentais</a>
+      </nav>
       <div class="account"><span>{{ session.username }} | {{ 'Professor' if session.role=='teacher' else 'Grupo' }}</span>
       <form action="{{ url_for('logout') }}" method="post">
         <input type="hidden" name="_csrf" value="{{ csrf() }}">
