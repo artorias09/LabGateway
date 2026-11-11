@@ -270,7 +270,7 @@ def upload():
     with store.connect() as db:
         db.execute('INSERT INTO submissions(user_id,title,path,created_at) VALUES(?,?,?,?)',
                    (session['uid'],title,str(path.resolve()),store.now()))
-    flash('Projeto recebido; aguarde execução pelo professor.')
+    flash('Projeto recebido; o professor já pode consultar e validar o envio.')
     return redirect(url_for('index'))
 
 @app.post('/queue/<int:sid>')
