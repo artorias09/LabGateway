@@ -32,3 +32,24 @@
   </section>
 </div>
 {% endblock %}
+
+{% if linked_datasets %}
+<section class="panel related-data">
+  <h2>Dados experimentais vinculados</h2>
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Ensaio</th><th>Registros</th><th>Formato</th><th></th></tr></thead>
+      <tbody>
+      {% for dataset in linked_datasets %}
+        <tr>
+          <td>{{ dataset.title }}<div class="meta">{{ dataset.created_at }}</div></td>
+          <td>{{ dataset.row_count }}</td>
+          <td>{{ dataset.file_type|upper }}</td>
+          <td><a href="{{ url_for('dataset_detail',did=dataset.id) }}">Abrir dados</a></td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endif %}
