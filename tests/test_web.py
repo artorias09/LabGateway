@@ -8,6 +8,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 os.environ.setdefault("LAB_SECRET_KEY", "test-only-secret-not-for-production-" + "x" * 40)
+os.environ.setdefault("LAB_INGEST_TOKEN", "test-ingest-token-" + "x" * 32)
 import app as web
 import store
 
@@ -173,6 +174,48 @@ class WebFlowTests(unittest.TestCase):
         self.assertEqual(project.status_code, 200)
         self.assertIn(b"Curva do sensor", project.data)
         self.assertIn(b"Dados experimentais vinculados", project.data)
+
+
+    def test_esp32_ingest_creates_station_and_measurements(self):
+        payload = {
+            "station": "grupo_01",
+            "name": "Estacao 01",
+            "group": "Grupo 01",
+            "data": {"temperatura": 24.7, "umidade": 61.2},
+            "units": {"temperatura": "C", "umidade": "%"},
+        }
+        r = self.client.post("/api/v1/measurements", json=payload, headers={
+            "X-LabGateway-Token": os.environ["LAB_INGEST_TOKEN"]
+        })
+        self.assertEqual(r.status_code, 201)
+        with store.connect() as db:
+            station = db.execute("SELECT * FROM stations WHERE station_key='grupo_01'").fetchone()
+            rows = db.execute("SELECT * FROM measurements WHERE station_id=? ORDER BY metric",(station["id"],)).fetchall()
+        self.assertEqual(station["name"], "Estacao 01")
+        self.assertEqual(len(rows), 2)
+
+    def test_esp32_ingest_rejects_bad_token(self):
+        r = self.client.post("/api/v1/measurements", json={
+            "station": "grupo_01", "data": {"temperatura": 20}
+        }, headers={"X-LabGateway-Token": "errado"})
+        self.assertEqual(r.status_code, 401)
+
+    def test_teacher_can_open_station_monitor(self):
+        self.client.post("/api/v1/measurements", json={
+            "station": "grupo_01", "name": "Estacao 01",
+            "data": {"temperatura": 20.5}, "units": {"temperatura": "C"}
+        }, headers={"X-LabGateway-Token": os.environ["LAB_INGEST_TOKEN"]})
+        self.login("professor", "long-password-teacher")
+        overview = self.client.get("/monitor")
+        self.assertEqual(overview.status_code, 200)
+        self.assertIn(b"Estacao 01", overview.data)
+        with store.connect() as db:
+            station_id = db.execute("SELECT id FROM stations WHERE station_key='grupo_01'").fetchone()["id"]
+        detail = self.client.get(f"/monitor/{station_id}")
+        self.assertEqual(detail.status_code, 200)
+        series = self.client.get(f"/api/v1/stations/{station_id}/series?metric=temperatura")
+        self.assertEqual(series.status_code, 200)
+        self.assertEqual(series.get_json()["points"][0]["value"], 20.5)
 
 
 if __name__ == "__main__":
