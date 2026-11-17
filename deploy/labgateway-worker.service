@@ -12,6 +12,7 @@ SupplementaryGroups=docker
 WorkingDirectory=/opt/labgateway
 Environment=LAB_DB=/var/lib/labgateway/labgateway.sqlite3
 Environment=LAB_UPLOADS=/var/lib/labgateway/uploads
+Environment=LAB_DATASETS=/var/lib/labgateway/datasets
 ExecStart=/opt/labgateway/.venv/bin/python worker.py
 Restart=on-failure
 RestartPreventExitStatus=78
