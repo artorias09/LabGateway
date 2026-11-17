@@ -2,6 +2,7 @@
 #include <WiFi.h>
 #include <HTTPClient.h>
 #include <WiFiClientSecure.h>
+#include <math.h>
 
 #ifndef LABGATEWAY_URL
 #define LABGATEWAY_URL "https://SEU-ENDERECO-LABGATEWAY"
@@ -19,8 +20,8 @@ class LabGatewayClass {
   String endpoint;
   String token;
   String station;
-  unsigned long ultimoEnvio = 0;
-  bool primeiroEnvio = true;
+  unsigned long ultimaTentativa = 0;
+  bool primeiraTentativa = true;
 
   static String escapeJson(const String &s) {
     String out;
@@ -39,19 +40,37 @@ class LabGatewayClass {
   template <typename T>
   static String numberJson(T value) { return String(value); }
 
-  static void appendValues(String &, int &) {}
+  static void appendValues(String &, int &, bool &) {}
 
   template <typename T, typename... Rest>
-  static void appendValues(String &json, int &index, T value, Rest... rest) {
+  static void appendValues(String &json, int &index, bool &valid, T value, Rest... rest) {
+    double numeric = static_cast<double>(value);
+    if (!isfinite(numeric)) {
+      valid = false;
+      return;
+    }
+
     index++;
     if (index > 1) json += ",";
     json += "\"variavel_" + String(index) + "\":";
     json += numberJson(value);
-    appendValues(json, index, rest...);
+    appendValues(json, index, valid, rest...);
+  }
+
+  void ensureStation() {
+    if (station.length()) return;
+
+    uint64_t chip = ESP.getEfuseMac();
+    char id[24];
+    snprintf(id, sizeof(id), "esp32_%04X%08X",
+             (uint16_t)(chip >> 32), (uint32_t)chip);
+    station = String(id);
   }
 
   bool sendJson(const String &dataJson) {
     if (WiFi.status() != WL_CONNECTED) return false;
+
+    ensureStation();
 
     WiFiClientSecure client;
     client.setInsecure();
@@ -76,33 +95,28 @@ public:
   LabGatewayClass() : endpoint(LABGATEWAY_URL), token(LABGATEWAY_TOKEN) {
     if (endpoint.endsWith("/")) endpoint.remove(endpoint.length() - 1);
     endpoint += "/api/v1/measurements";
-
-    uint64_t chip = ESP.getEfuseMac();
-    char id[24];
-    snprintf(id, sizeof(id), "esp32_%04X%08X",
-             (uint16_t)(chip >> 32), (uint32_t)chip);
-    station = String(id);
   }
 
   template <typename... Values>
   bool enviar(Values... values) {
     unsigned long agora = millis();
 
-    if (!primeiroEnvio && (unsigned long)(agora - ultimoEnvio) < LABGATEWAY_INTERVALO_MS) {
+    if (!primeiraTentativa &&
+        (unsigned long)(agora - ultimaTentativa) < LABGATEWAY_INTERVALO_MS) {
       return true;
     }
 
+    primeiraTentativa = false;
+    ultimaTentativa = agora;
+
     String data = "{";
     int index = 0;
-    appendValues(data, index, values...);
+    bool valid = true;
+    appendValues(data, index, valid, values...);
     data += "}";
 
-    bool ok = sendJson(data);
-    if (ok) {
-      ultimoEnvio = agora;
-      primeiroEnvio = false;
-    }
-    return ok;
+    if (!valid || index == 0) return false;
+    return sendJson(data);
   }
 };
 
