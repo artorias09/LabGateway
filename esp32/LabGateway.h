@@ -3,12 +3,18 @@
 #include <HTTPClient.h>
 #include <WiFiClientSecure.h>
 
-class LabGatewayClient {
+#ifndef LABGATEWAY_URL
+#define LABGATEWAY_URL "https://SEU-ENDERECO-LABGATEWAY"
+#endif
+
+#ifndef LABGATEWAY_TOKEN
+#define LABGATEWAY_TOKEN "TOKEN_FORNECIDO_PELO_PROFESSOR"
+#endif
+
+class LabGatewayClass {
   String endpoint;
   String token;
   String station;
-  String stationName;
-  String groupName;
 
   static String escapeJson(const String &s) {
     String out;
@@ -21,29 +27,68 @@ class LabGatewayClient {
     return out;
   }
 
-public:
-  LabGatewayClient(const char *baseUrl, const char *apiToken,
-                   const char *stationId, const char *name, const char *group)
-      : token(apiToken), station(stationId), stationName(name), groupName(group) {
-    endpoint = String(baseUrl);
-    if (endpoint.endsWith("/")) endpoint.remove(endpoint.length() - 1);
-    endpoint += "/api/v1/measurements";
+  static void appendValues(String &) {}
+
+  template <typename T, typename... Rest>
+  static void appendValues(String &json, T value, Rest... rest) {
+    int index = countFields(json) + 1;
+    if (index > 1) json += ",";
+    json += "\"variavel_" + String(index) + "\":";
+    json += String(value, 6);
+    appendValues(json, rest...);
   }
 
-  bool send(const String &dataJson, const String &unitsJson = "{}") {
+  static int countFields(const String &json) {
+    int count = 0;
+    int pos = 0;
+    while ((pos = json.indexOf("\"variavel_", pos)) >= 0) {
+      count++;
+      pos += 10;
+    }
+    return count;
+  }
+
+  bool sendJson(const String &dataJson) {
     if (WiFi.status() != WL_CONNECTED) return false;
+
     WiFiClientSecure client;
     client.setInsecure();
+
     HTTPClient http;
     if (!http.begin(client, endpoint)) return false;
+
     http.addHeader("Content-Type", "application/json");
     http.addHeader("X-LabGateway-Token", token);
+
     String body = "{\"station\":\"" + escapeJson(station) +
-      "\",\"name\":\"" + escapeJson(stationName) +
-      "\",\"group\":\"" + escapeJson(groupName) +
-      "\",\"data\":" + dataJson + ",\"units\":" + unitsJson + "}";
+                  "\",\"name\":\"" + escapeJson(station) +
+                  "\",\"group\":\"\",\"data\":" + dataJson +
+                  ",\"units\":{}}";
+
     int code = http.POST(body);
     http.end();
     return code >= 200 && code < 300;
   }
+
+public:
+  LabGatewayClass() : endpoint(LABGATEWAY_URL), token(LABGATEWAY_TOKEN) {
+    if (endpoint.endsWith("/")) endpoint.remove(endpoint.length() - 1);
+    endpoint += "/api/v1/measurements";
+
+    uint64_t chip = ESP.getEfuseMac();
+    char id[24];
+    snprintf(id, sizeof(id), "esp32_%04X%08X",
+             (uint16_t)(chip >> 32), (uint32_t)chip);
+    station = String(id);
+  }
+
+  template <typename... Values>
+  bool enviar(Values... values) {
+    String data = "{";
+    appendValues(data, values...);
+    data += "}";
+    return sendJson(data);
+  }
 };
+
+inline LabGatewayClass LabGateway;
