@@ -21,16 +21,35 @@ def init():
     UPLOAD.mkdir(parents=True, exist_ok=True)
     DATASET_UPLOAD.mkdir(parents=True, exist_ok=True)
     with connect() as db:
-        db.executescript('''
+        db.executescript("""
           CREATE TABLE IF NOT EXISTS users(id INTEGER PRIMARY KEY, username TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL, role TEXT NOT NULL CHECK(role IN ('teacher','student')));
           CREATE TABLE IF NOT EXISTS submissions(id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id), title TEXT NOT NULL, path TEXT NOT NULL, created_at TEXT NOT NULL);
           CREATE TABLE IF NOT EXISTS runs(id INTEGER PRIMARY KEY, submission_id INTEGER NOT NULL REFERENCES submissions(id), status TEXT NOT NULL CHECK(status IN ('queued','running','passed','failed','timeout','error')), output TEXT NOT NULL DEFAULT '', started_at TEXT, finished_at TEXT);
           CREATE TABLE IF NOT EXISTS datasets(id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id), submission_id INTEGER REFERENCES submissions(id), title TEXT NOT NULL, description TEXT NOT NULL DEFAULT '', units TEXT NOT NULL DEFAULT '', original_name TEXT NOT NULL, path TEXT NOT NULL, file_type TEXT NOT NULL CHECK(file_type IN ('csv','json')), row_count INTEGER NOT NULL DEFAULT 0, columns_json TEXT NOT NULL DEFAULT '[]', created_at TEXT NOT NULL);
+          CREATE TABLE IF NOT EXISTS stations(
+            id INTEGER PRIMARY KEY,
+            station_key TEXT UNIQUE NOT NULL,
+            name TEXT NOT NULL,
+            group_name TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL,
+            last_seen_at TEXT
+          );
+          CREATE TABLE IF NOT EXISTS measurements(
+            id INTEGER PRIMARY KEY,
+            station_id INTEGER NOT NULL REFERENCES stations(id) ON DELETE CASCADE,
+            metric TEXT NOT NULL,
+            value REAL NOT NULL,
+            unit TEXT NOT NULL DEFAULT '',
+            captured_at TEXT NOT NULL,
+            received_at TEXT NOT NULL
+          );
           CREATE INDEX IF NOT EXISTS idx_submissions_user ON submissions(user_id);
           CREATE INDEX IF NOT EXISTS idx_datasets_user ON datasets(user_id);
           CREATE INDEX IF NOT EXISTS idx_datasets_submission ON datasets(submission_id);
           CREATE INDEX IF NOT EXISTS idx_runs_status ON runs(status);
-        ''')
+          CREATE INDEX IF NOT EXISTS idx_measurements_station_time ON measurements(station_id,captured_at);
+          CREATE INDEX IF NOT EXISTS idx_measurements_station_metric_time ON measurements(station_id,metric,captured_at);
+        """)
 
 def create_user(username, password, role):
     if role not in ('teacher','student'):
