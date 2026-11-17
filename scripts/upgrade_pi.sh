@@ -26,6 +26,21 @@ chmod 2770 "$DATA/datasets"
 if ! grep -q '^LAB_DATASETS=' "$ENVFILE"; then
   printf '\nLAB_DATASETS=/var/lib/labgateway/datasets\n' >> "$ENVFILE"
 fi
+if ! grep -q '^LAB_INGEST_TOKEN=' "$ENVFILE"; then
+  INGEST_TOKEN="$(python3 -c 'import secrets;print(secrets.token_urlsafe(32))')"
+  printf 'LAB_INGEST_TOKEN=%s\n' "$INGEST_TOKEN" >> "$ENVFILE"
+fi
+
+echo "Validando código antes de alterar a instalação..."
+LAB_SECRET_KEY="upgrade-test-secret-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" \
+LAB_INGEST_TOKEN="upgrade-test-token-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" \
+"$TARGET/.venv/bin/python" -m compileall -q "$ROOT/app.py" "$ROOT/admin.py" "$ROOT/core.py" "$ROOT/store.py" "$ROOT/worker.py" "$ROOT/tests"
+(
+  cd "$ROOT"
+  LAB_SECRET_KEY="upgrade-test-secret-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" \
+  LAB_INGEST_TOKEN="upgrade-test-token-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" \
+  "$TARGET/.venv/bin/python" -m unittest discover -s tests -v
+) || die "Testes falharam. Instalação atual preservada."
 
 echo "Parando somente os serviços do LabGateway..."
 systemctl stop labgateway-worker.service labgateway-web.service
@@ -50,6 +65,9 @@ set +a
 sudo -u labweb env   LAB_DB="$LAB_DB"   LAB_UPLOADS="$LAB_UPLOADS"   LAB_DATASETS="$LAB_DATASETS"   "$TARGET/.venv/bin/python" -c 'import store; store.init()'
 
 echo "Iniciando LabGateway..."
+install -m 644 "$TARGET/deploy/labgateway-web.service" /etc/systemd/system/labgateway-web.service
+install -m 644 "$TARGET/deploy/labgateway-worker.service" /etc/systemd/system/labgateway-worker.service
+systemctl daemon-reload
 systemctl start labgateway-web.service labgateway-worker.service
 systemctl is-active --quiet labgateway-web.service || die "labgateway-web não iniciou."
 systemctl is-active --quiet labgateway-worker.service || die "labgateway-worker não iniciou."

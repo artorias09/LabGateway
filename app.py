@@ -7,6 +7,7 @@ import uuid
 import zipfile
 from pathlib import Path
 from functools import wraps
+from datetime import datetime, timezone
 from flask import Flask, request, redirect, session, render_template, flash, abort, url_for, send_file
 from werkzeug.exceptions import RequestEntityTooLarge
 from werkzeug.utils import secure_filename
@@ -68,6 +69,8 @@ def add_csrf():
 
 @app.before_request
 def csrf_check():
+    if request.path == '/api/v1/measurements':
+        return
     if request.method == 'POST':
         submitted = request.form.get('_csrf', '')
         expected = session.get('csrf')
@@ -108,6 +111,138 @@ def index():
                 (SELECT status FROM runs WHERE submission_id=s.id ORDER BY id DESC LIMIT 1) AS status
                 FROM submissions s JOIN users u ON u.id=s.user_id WHERE s.user_id=? ORDER BY s.id DESC LIMIT 100''',(session['uid'],)).fetchall()
     return render_template('index.html',items=items)
+
+
+
+def _ingest_authorized():
+    expected = os.environ.get('LAB_INGEST_TOKEN', '')
+    supplied = request.headers.get('X-LabGateway-Token', '')
+    return len(expected) >= 24 and secrets.compare_digest(expected, supplied)
+
+
+@app.post('/api/v1/measurements')
+def ingest_measurements():
+    if not _ingest_authorized():
+        abort(401)
+
+    payload = request.get_json(silent=True)
+    if not isinstance(payload, dict):
+        abort(400, 'JSON inválido')
+
+    station_key = str(payload.get('station', '')).strip()
+    station_name = str(payload.get('name', station_key)).strip()
+    group_name = str(payload.get('group', '')).strip()
+    values = payload.get('data')
+    units = payload.get('units') or {}
+
+    if not 1 <= len(station_key) <= 64 or not station_key.replace('_','').replace('-','').isalnum():
+        abort(400, 'Identificador de estação inválido')
+    if not 1 <= len(station_name) <= 100 or len(group_name) > 100:
+        abort(400, 'Metadados da estação inválidos')
+    if not isinstance(values, dict) or not 1 <= len(values) <= 32:
+        abort(400, 'Envie de 1 a 32 medições em data')
+    if not isinstance(units, dict):
+        abort(400, 'units deve ser um objeto')
+
+    captured_at = payload.get('captured_at')
+    if captured_at:
+        try:
+            parsed = datetime.fromisoformat(str(captured_at).replace('Z', '+00:00'))
+            if parsed.tzinfo is None:
+                parsed = parsed.replace(tzinfo=timezone.utc)
+            captured_at = parsed.astimezone(timezone.utc).isoformat(timespec='seconds')
+        except ValueError:
+            abort(400, 'captured_at inválido')
+    else:
+        captured_at = store.now()
+
+    clean = []
+    for metric, value in values.items():
+        metric = str(metric).strip()
+        if not 1 <= len(metric) <= 64:
+            abort(400, 'Nome de variável inválido')
+        try:
+            number = float(value)
+        except (TypeError, ValueError):
+            abort(400, f'Valor inválido para {metric}')
+        if not (-1e100 < number < 1e100):
+            abort(400, f'Valor fora da faixa para {metric}')
+        unit = str(units.get(metric, '')).strip()
+        if len(unit) > 32:
+            abort(400, f'Unidade muito longa para {metric}')
+        clean.append((metric, number, unit))
+
+    received_at = store.now()
+    with store.connect() as db:
+        station = db.execute('SELECT id FROM stations WHERE station_key=?',(station_key,)).fetchone()
+        if station is None:
+            cur = db.execute(
+                'INSERT INTO stations(station_key,name,group_name,created_at,last_seen_at) VALUES(?,?,?,?,?)',
+                (station_key,station_name,group_name,received_at,received_at)
+            )
+            station_id = cur.lastrowid
+        else:
+            station_id = station['id']
+            db.execute(
+                'UPDATE stations SET name=?,group_name=?,last_seen_at=? WHERE id=?',
+                (station_name,group_name,received_at,station_id)
+            )
+        db.executemany(
+            'INSERT INTO measurements(station_id,metric,value,unit,captured_at,received_at) VALUES(?,?,?,?,?,?)',
+            [(station_id,metric,value,unit,captured_at,received_at) for metric,value,unit in clean]
+        )
+    return {'ok': True, 'station': station_key, 'received_at': received_at, 'metrics': len(clean)}, 201
+
+
+@app.get('/monitor')
+@teacher_only
+def monitor():
+    with store.connect() as db:
+        stations = db.execute('''SELECT s.*,
+            (SELECT COUNT(*) FROM measurements m WHERE m.station_id=s.id) AS measurement_count,
+            (SELECT COUNT(DISTINCT metric) FROM measurements m WHERE m.station_id=s.id) AS metric_count
+            FROM stations s ORDER BY s.name''').fetchall()
+    return render_template('monitor.html', stations=stations)
+
+
+@app.get('/monitor/<int:station_id>')
+@teacher_only
+def monitor_station(station_id):
+    with store.connect() as db:
+        station = db.execute('SELECT * FROM stations WHERE id=?',(station_id,)).fetchone()
+        if station is None:
+            abort(404)
+        metrics = db.execute(
+            'SELECT metric,MAX(unit) AS unit,COUNT(*) AS n,MIN(captured_at) AS first_at,MAX(captured_at) AS last_at FROM measurements WHERE station_id=? GROUP BY metric ORDER BY metric',
+            (station_id,)
+        ).fetchall()
+        latest = db.execute('''SELECT m.metric,m.value,m.unit,m.captured_at
+            FROM measurements m
+            JOIN (SELECT metric,MAX(id) AS id FROM measurements WHERE station_id=? GROUP BY metric) x ON x.id=m.id
+            ORDER BY m.metric''',(station_id,)).fetchall()
+    return render_template('monitor_station.html',station=station,metrics=metrics,latest=latest)
+
+
+@app.get('/api/v1/stations/<int:station_id>/series')
+@teacher_only
+def station_series(station_id):
+    metric = request.args.get('metric','').strip()
+    try:
+        limit = min(max(int(request.args.get('limit','500')),10),2000)
+    except ValueError:
+        limit = 500
+    with store.connect() as db:
+        station = db.execute('SELECT id FROM stations WHERE id=?',(station_id,)).fetchone()
+        if station is None:
+            abort(404)
+        if not metric:
+            row = db.execute('SELECT metric FROM measurements WHERE station_id=? ORDER BY id DESC LIMIT 1',(station_id,)).fetchone()
+            metric = row['metric'] if row else ''
+        rows = db.execute('''SELECT captured_at,value,unit FROM (
+            SELECT id,captured_at,value,unit FROM measurements
+            WHERE station_id=? AND metric=? ORDER BY id DESC LIMIT ?
+        ) ORDER BY id''',(station_id,metric,limit)).fetchall() if metric else []
+    return {'metric':metric,'points':[dict(r) for r in rows]}
 
 
 @app.get('/datasets')

@@ -1,79 +1,129 @@
-# LabGateway v0.1 — protótipo para Raspberry Pi 3
+# LabGateway v0.5
 
-**Status: não homologado para exposição pública ou execução de código desconhecido.** Código disponível para testes locais. Requer Docker para executar projetos dos alunos.
+Servidor de projetos, dados experimentais e aquisição automática para instrumentação com ESP32.
 
-## Objetivo
-Alunos enviam ZIPs com `main.py`, o professor solicita a execução e consulta status e logs. A Raspberry Pi 3 será o host no futuro; eduroam e ngrok não são necessários para desenvolver ou testar localmente.
+## Instrução para a turma
 
-## Escopo da v0.1
-- Python 3.12 e ZIP com `main.py` na raiz; arquivos permitidos: .py, .txt, .json, .csv e .md.
-- Contas criadas manualmente por administrador; papéis student e teacher.
-- Apenas o professor coloca projetos na fila.
-- Worker separado usa Docker sem rede, sem privilégios, com filesystem read-only e limites de recursos.
-- Uma execução por vez; SQLite; saída limitada; upload máximo de 2 MiB.
-- Sem instalação de dependências externas, acesso a GPIO, serial, USB ou rede no código do aluno.
+O procedimento é o mesmo para todos os projetos, mesmo que cada grupo use sensores diferentes.
 
-## Desenvolvimento no Windows (PowerShell)
-```powershell
-py -3 -m venv .venv
-.\.venv\Scripts\Activate.ps1
-python -m pip install -r requirements.txt
-$env:LAB_SECRET_KEY = (python -c "import secrets; print(secrets.token_hex(32))").Trim()
-python admin.py create-user professor teacher
-python admin.py create-user grupo01 student
-python app.py
+O aluno recebe o arquivo `LabGateway.h` já configurado pelo responsável pela atividade.
+
+### 1. Coloque o arquivo LabGateway.h junto do código
+
+### 2. No começo do código, cole
+
+```cpp
+#include "LabGateway.h"
 ```
-Abra http://127.0.0.1:5001. Crie um ZIP com `main.py` (veja `examples/main.py`); envie com conta de aluno, solicite a execução como professor. Com Docker Desktop no modo Linux containers:
-```powershell
-docker pull python:3.12-alpine
-python worker.py --once
+
+### 3. No loop, depois da leitura dos sensores, cole
+
+```cpp
+LabGateway.enviar(
+  COLOQUE_VARIAVEL_1_AQUI,
+  COLOQUE_VARIAVEL_2_AQUI
+);
 ```
-Sem Docker, a execução falha com segurança: o código do aluno **não é executado no host**.
+
+### 4. Troque somente as lacunas
+
+Se as variáveis do projeto forem `temperatura` e `umidade`:
+
+```cpp
+LabGateway.enviar(
+  temperatura,
+  umidade
+);
+```
+
+Pronto.
+
+Se houver uma variável:
+
+```cpp
+LabGateway.enviar(temperatura);
+```
+
+Se houver três:
+
+```cpp
+LabGateway.enviar(temperatura, umidade, pressao);
+```
+
+A mesma chamada aceita 1, 2, 3 ou mais medições.
+
+## O que o aluno não precisa configurar
+
+O aluno não configura intervalo de transmissão, número do grupo, nome da estação, URL, token, JSON, HTTP, endpoint, banco de dados ou dashboard.
+
+A biblioteca:
+
+- identifica automaticamente cada ESP32 pelo chip;
+- transforma os valores em `variavel_1`, `variavel_2`, `variavel_3` e assim por diante;
+- limita automaticamente a transmissão para uma aquisição a cada 30 segundos;
+- não bloqueia o loop entre os envios;
+- só atualiza o relógio de transmissão quando o servidor confirma o recebimento;
+- monta o pacote;
+- autentica;
+- envia ao servidor.
+
+O aluno pode deixar `LabGateway.enviar(...)` dentro do `loop()`. Mesmo que o loop execute milhares de vezes, a biblioteca só transmite quando o intervalo configurado for atingido.
+
+O intervalo padrão é definido em `LABGATEWAY_INTERVALO_MS` dentro da configuração distribuída pela equipe. O padrão atual é 30 segundos. Isso pode ser alterado centralmente antes de entregar o arquivo à turma sem mudar o procedimento dos alunos.
+
+## Fluxo
+
+```text
+codigo do aluno
+      |
+LabGateway.enviar(...)
+      |
+controle automatico do intervalo
+      |
+HTTPS
+      |
+Raspberry Pi
+      |
+Flask
+      |
+SQLite
+      |
+Monitoramento
+```
+
+O endpoint de aquisição é `POST /api/v1/measurements`. O servidor armazena cada posição como uma série temporal independente. O professor acompanha as estações pela página Monitoramento.
+
+A atualização visual do gráfico é independente do intervalo de aquisição.
+
+## Configuração feita pela equipe
+
+Antes de distribuir `LabGateway.h`, o responsável configura:
+
+```cpp
+#define LABGATEWAY_URL "https://ENDERECO-DO-SERVIDOR"
+#define LABGATEWAY_TOKEN "TOKEN-DO-SERVIDOR"
+#define LABGATEWAY_INTERVALO_MS 30000UL
+```
+
+Esses dados não fazem parte do passo a passo do aluno.
+
+## Dados experimentais
+
+O sistema também mantém o envio manual de CSV e JSON e a associação de dados a projetos.
+
+## Projetos
+
+O fluxo de envio e validação de projetos continua disponível. A aquisição das ESP32 é independente da execução de código na Raspberry.
 
 ## Testes
+
 ```bash
 python -m unittest discover -s tests -v
 python -m compileall -q app.py admin.py core.py store.py worker.py tests
 ```
 
-## Implantação futura
-Verificar Raspberry Pi OS em ARM64 (`uname -m`), memória, espaço livre, Docker e permissões dos serviços. Fazer backup do projeto do forno e **não o sobrescrever**. Configurar contas Unix separadas para web e worker. Usar HTTPS, autenticação adicional e controle de acesso antes de configurar ngrok na eduroam autorizada.
+## Implantação
 
-## Riscos e limitações
-Docker não é garantia absoluta de isolamento para código hostil. Ainda faltam testes integrados, rate limiting, auditoria, revisão de permissões, retenção, limpeza de contêineres após timeout e recuperação de falhas. **Não expor o protótipo à internet ou a alunos reais até homologação.**
+A aplicação usa a porta 5001. O serviço do forno permanece separado na porta 5000.
 
-Veja [arquitetura](docs/ARCHITECTURE.md) e [roadmap](docs/ROADMAP.md).
-
-
-## Reaproveitamento do forno (recomendado)\n\nO projeto **não** reconfigura eduroam, roteamento, duas interfaces Wi-Fi, ngrok ou o serviço do forno. A auditoria somente leitura em `scripts/audit_forno_reuse.sh` identifica o que já está operando. Consulte [REAPROVEITAMENTO_FORNO.md](docs/REAPROVEITAMENTO_FORNO.md). A porta 5000 continua reservada para o forno e a aplicação nova usa 5001. Docker é necessário para executar código de alunos; não será instalado nem forçado no OS antigo sem diagnóstico.\n\n## Preflight da Raspberry sem HDMI
-
-Veja [roteiro de amanhã](docs/AMANHA_RASPBERRY.md) e [decisões de rede](docs/DECISOES.md). Na máquina: `bash scripts/preflight.sh`. O script é somente leitura e não altera o servidor do forno.
-
-O conserto de timeout no worker está na branch `feature/v02-deployment-readiness` e aguarda testes reais com Docker antes de integração na main.
-
-
-## Validação técnica de projetos
-
-A versão em desenvolvimento identifica projetos Python, C, C++ e ESP32/Arduino.
-
-- Python: executado em contêiner isolado.
-- C e C++: compilados com avisos habilitados e executados em contêiner isolado.
-- ESP32/Arduino: aceitos e identificados; a toolchain específica ainda não é executada automaticamente.
-- O professor pode baixar o projeto recebido como ZIP usando o título informado pelo aluno como nome do arquivo.
-
-Antes de validar C/C++ na Raspberry, construa uma vez a imagem local:
-
-```bash
-sudo bash scripts/prepare_runners.sh
-```
-
-O runner não tem rede durante a avaliação e o código não é executado diretamente no host.
-
-
-## Dados experimentais
-
-A interface possui uma área separada para registrar resultados experimentais. Cada envio pode ser associado a um projeto e inclui nome do ensaio, descrição, unidades e arquivo CSV ou JSON.
-
-O servidor registra no SQLite o responsável, projeto relacionado, formato, número de registros, nomes das colunas, caminho do arquivo e data do envio. O arquivo original permanece armazenado para download e a interface mostra uma prévia de até 20 registros.
-
-Essa estrutura deixa o banco pronto para uma evolução futura em que bancadas ou nós de rede alimentem os mesmos registros automaticamente.
+O servidor usa `LAB_INGEST_TOKEN` em `/etc/labgateway/web.env`. O valor correspondente deve ser colocado no `LabGateway.h` distribuído para a atividade.

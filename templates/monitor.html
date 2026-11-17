@@ -1,0 +1,22 @@
+{% extends 'base.html' %}
+{% block title %}Monitoramento | LabGateway{% endblock %}
+{% block content %}
+<h1>Estações ambientais</h1>
+<p class="intro">Aquisição automática recebida das ESP32. Selecione uma estação para verificar atividade e consistência das medições.</p>
+<section class="panel">
+  {% if stations %}
+  <div class="station-grid">
+    {% for s in stations %}
+    <a class="station-card" href="{{ url_for('monitor_station',station_id=s.id) }}">
+      <strong>{{ s.name }}</strong>
+      <span>{{ s.group_name or s.station_key }}</span>
+      <span>Último dado: {{ s.last_seen_at or 'ainda sem dados' }}</span>
+      <span>{{ s.measurement_count }} medições | {{ s.metric_count }} variáveis</span>
+    </a>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p class="empty">Nenhuma estação enviou dados ainda.</p>
+  {% endif %}
+</section>
+{% endblock %}

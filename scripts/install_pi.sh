@@ -58,11 +58,13 @@ umask 027
 python3 -m venv /opt/labgateway/.venv || die "python3-venv requerido. Servicos ainda nao foram iniciados."
 /opt/labgateway/.venv/bin/python -m pip install -r /opt/labgateway/requirements.txt
 SECRET="$(/opt/labgateway/.venv/bin/python -c 'import secrets;print(secrets.token_hex(32))')"
+INGEST_TOKEN="$(/opt/labgateway/.venv/bin/python -c 'import secrets;print(secrets.token_urlsafe(32))')"
 cat > /etc/labgateway/web.env <<EOF
 LAB_SECRET_KEY=$SECRET
 LAB_DB=/var/lib/labgateway/labgateway.sqlite3
 LAB_UPLOADS=/var/lib/labgateway/uploads
 LAB_DATASETS=/var/lib/labgateway/datasets
+LAB_INGEST_TOKEN=$INGEST_TOKEN
 LAB_SECURE_COOKIE=0
 EOF
 chmod 600 /etc/labgateway/web.env
