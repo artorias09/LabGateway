@@ -77,3 +77,42 @@ A interface possui uma área separada para registrar resultados experimentais. C
 O servidor registra no SQLite o responsável, projeto relacionado, formato, número de registros, nomes das colunas, caminho do arquivo e data do envio. O arquivo original permanece armazenado para download e a interface mostra uma prévia de até 20 registros.
 
 Essa estrutura deixa o banco pronto para uma evolução futura em que bancadas ou nós de rede alimentem os mesmos registros automaticamente.
+
+
+## Aquisição automática com ESP32
+
+A v0.5 adiciona aquisição contínua para as estações ambientais. O código de cada grupo continua executando na própria ESP32 e inclui o cliente padrão em `esp32/LabGateway.h`.
+
+Fluxo:
+
+```text
+ESP32 -> HTTPS -> /api/v1/measurements -> SQLite -> Monitoramento
+```
+
+Cada pacote identifica a estação e envia um conjunto livre de variáveis numéricas. O servidor registra horário de aquisição, horário de recebimento, variável, valor e unidade. As estações podem ter sensores diferentes sem alterar o esquema do servidor.
+
+Exemplo de pacote:
+
+```json
+{
+  "station": "grupo_01",
+  "name": "Estacao 01",
+  "group": "Grupo 01",
+  "data": {
+    "temperatura": 24.7,
+    "umidade": 61.2
+  },
+  "units": {
+    "temperatura": "C",
+    "umidade": "%"
+  }
+}
+```
+
+O endpoint exige o cabeçalho `X-LabGateway-Token`. O token é criado no servidor durante instalação ou atualização e fica em `/etc/labgateway/web.env` como `LAB_INGEST_TOKEN`.
+
+O professor acessa **Monitoramento** para selecionar uma estação, verificar a última comunicação, quantidade de medições, período de aquisição e curvas. A página da estação consulta os últimos pontos e atualiza o gráfico a cada 5 segundos.
+
+Para a atividade das estações ambientais, recomenda-se começar com intervalo de transmissão de 30 segundos e ajustar conforme a dinâmica dos sensores. O intervalo da ESP e a atualização visual do dashboard são independentes.
+
+Esta versão usa arquitetura centralizada ESP32 -> servidor. Uma rede mesh entre nós pode ser adicionada posteriormente sem alterar o modelo central de armazenamento.
