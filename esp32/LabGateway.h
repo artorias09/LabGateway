@@ -27,6 +27,12 @@ class LabGatewayClass {
     return out;
   }
 
+  static String numberJson(float value) { return String(value, 6); }
+  static String numberJson(double value) { return String(value, 6); }
+
+  template <typename T>
+  static String numberJson(T value) { return String(value); }
+
   static void appendValues(String &) {}
 
   template <typename T, typename... Rest>
@@ -34,7 +40,7 @@ class LabGatewayClass {
     int index = countFields(json) + 1;
     if (index > 1) json += ",";
     json += "\"variavel_" + String(index) + "\":";
-    json += String(value, 6);
+    json += numberJson(value);
     appendValues(json, rest...);
   }
 
