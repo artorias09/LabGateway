@@ -26,6 +26,10 @@ chmod 2770 "$DATA/datasets"
 if ! grep -q '^LAB_DATASETS=' "$ENVFILE"; then
   printf '\nLAB_DATASETS=/var/lib/labgateway/datasets\n' >> "$ENVFILE"
 fi
+if ! grep -q '^LAB_INGEST_TOKEN=' "$ENVFILE"; then
+  INGEST_TOKEN="$(python3 -c 'import secrets;print(secrets.token_urlsafe(32))')"
+  printf 'LAB_INGEST_TOKEN=%s\n' "$INGEST_TOKEN" >> "$ENVFILE"
+fi
 
 echo "Parando somente os serviços do LabGateway..."
 systemctl stop labgateway-worker.service labgateway-web.service
@@ -50,6 +54,8 @@ set +a
 sudo -u labweb env   LAB_DB="$LAB_DB"   LAB_UPLOADS="$LAB_UPLOADS"   LAB_DATASETS="$LAB_DATASETS"   "$TARGET/.venv/bin/python" -c 'import store; store.init()'
 
 echo "Iniciando LabGateway..."
+install -m 644 "$TARGET/deploy/labgateway-worker.service" /etc/systemd/system/labgateway-worker.service
+systemctl daemon-reload
 systemctl start labgateway-web.service labgateway-worker.service
 systemctl is-active --quiet labgateway-web.service || die "labgateway-web não iniciou."
 systemctl is-active --quiet labgateway-worker.service || die "labgateway-worker não iniciou."
