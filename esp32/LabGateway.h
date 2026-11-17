@@ -1,6 +1,7 @@
 #pragma once
 #include <WiFi.h>
 #include <HTTPClient.h>
+#include <WiFiClientSecure.h>
 
 class LabGatewayClient {
   String endpoint;
@@ -31,8 +32,10 @@ public:
 
   bool send(const String &dataJson, const String &unitsJson = "{}") {
     if (WiFi.status() != WL_CONNECTED) return false;
+    WiFiClientSecure client;
+    client.setInsecure();
     HTTPClient http;
-    if (!http.begin(endpoint)) return false;
+    if (!http.begin(client, endpoint)) return false;
     http.addHeader("Content-Type", "application/json");
     http.addHeader("X-LabGateway-Token", token);
     String body = "{\"station\":\"" + escapeJson(station) +
