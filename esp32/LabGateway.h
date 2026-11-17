@@ -11,10 +11,16 @@
 #define LABGATEWAY_TOKEN "TOKEN_FORNECIDO_PELO_PROFESSOR"
 #endif
 
+#ifndef LABGATEWAY_INTERVALO_MS
+#define LABGATEWAY_INTERVALO_MS 30000UL
+#endif
+
 class LabGatewayClass {
   String endpoint;
   String token;
   String station;
+  unsigned long ultimoEnvio = 0;
+  bool primeiroEnvio = true;
 
   static String escapeJson(const String &s) {
     String out;
@@ -33,25 +39,15 @@ class LabGatewayClass {
   template <typename T>
   static String numberJson(T value) { return String(value); }
 
-  static void appendValues(String &) {}
+  static void appendValues(String &, int &) {}
 
   template <typename T, typename... Rest>
-  static void appendValues(String &json, T value, Rest... rest) {
-    int index = countFields(json) + 1;
+  static void appendValues(String &json, int &index, T value, Rest... rest) {
+    index++;
     if (index > 1) json += ",";
     json += "\"variavel_" + String(index) + "\":";
     json += numberJson(value);
-    appendValues(json, rest...);
-  }
-
-  static int countFields(const String &json) {
-    int count = 0;
-    int pos = 0;
-    while ((pos = json.indexOf("\"variavel_", pos)) >= 0) {
-      count++;
-      pos += 10;
-    }
-    return count;
+    appendValues(json, index, rest...);
   }
 
   bool sendJson(const String &dataJson) {
@@ -90,10 +86,23 @@ public:
 
   template <typename... Values>
   bool enviar(Values... values) {
+    unsigned long agora = millis();
+
+    if (!primeiroEnvio && (unsigned long)(agora - ultimoEnvio) < LABGATEWAY_INTERVALO_MS) {
+      return true;
+    }
+
     String data = "{";
-    appendValues(data, values...);
+    int index = 0;
+    appendValues(data, index, values...);
     data += "}";
-    return sendJson(data);
+
+    bool ok = sendJson(data);
+    if (ok) {
+      ultimoEnvio = agora;
+      primeiroEnvio = false;
+    }
+    return ok;
   }
 };
 
