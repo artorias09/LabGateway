@@ -43,6 +43,13 @@ def init():
             captured_at TEXT NOT NULL,
             received_at TEXT NOT NULL
           );
+          CREATE TABLE IF NOT EXISTS station_metric_labels(
+            station_id INTEGER NOT NULL REFERENCES stations(id) ON DELETE CASCADE,
+            metric TEXT NOT NULL,
+            label TEXT NOT NULL,
+            unit TEXT NOT NULL DEFAULT '',
+            PRIMARY KEY(station_id,metric)
+          );
           CREATE INDEX IF NOT EXISTS idx_submissions_user ON submissions(user_id);
           CREATE INDEX IF NOT EXISTS idx_datasets_user ON datasets(user_id);
           CREATE INDEX IF NOT EXISTS idx_datasets_submission ON datasets(submission_id);
