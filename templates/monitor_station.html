@@ -20,6 +20,7 @@
 {% endfor %}
 </div>
 
+{% if session.role == 'teacher' %}
 <section class="panel">
   <h2>Identificação das variáveis</h2>
   <p class="hint">Defina uma vez o nome real de cada variável desta estação. Isso não altera o código da ESP32.</p>
@@ -42,6 +43,7 @@
     <button type="submit">Salvar nomes</button>
   </form>
 </section>
+{% endif %}
 
 <section class="panel monitor-panel">
   <div class="monitor-head">

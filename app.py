@@ -22,7 +22,8 @@ if len(app.secret_key) < 32:
     raise RuntimeError('Defina LAB_SECRET_KEY (>= 32 caracteres aleatórios)')
 app.config.update(MAX_CONTENT_LENGTH=MAX_DATA_BYTES+100*1024,
                   SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE='Lax',
-                  SESSION_COOKIE_SECURE=os.environ.get('LAB_SECURE_COOKIE','0')=='1')
+                  SESSION_COOKIE_SECURE=os.environ.get('LAB_SECURE_COOKIE','0')=='1',
+                  LAB_VIEWER_USERNAME=os.environ.get('LAB_VIEWER_USERNAME','alunos').strip())
 store.init()
 
 STATUS_LABELS = {'queued':'Na fila','running':'Executando','passed':'Concluído','failed':'Erro no programa','timeout':'Tempo excedido','error':'Falha no servidor'}
@@ -48,11 +49,24 @@ def require_login(fn):
         return fn(*a,**kw)
     return inner
 
+def is_viewer():
+    username = app.config.get('LAB_VIEWER_USERNAME', 'alunos')
+    return bool(username) and session.get('username') == username
+
 def teacher_only(fn):
     @wraps(fn)
     @require_login
     def inner(*a,**kw):
         if session.get('role') != 'teacher':
+            abort(403)
+        return fn(*a,**kw)
+    return inner
+
+def monitor_access(fn):
+    @wraps(fn)
+    @require_login
+    def inner(*a,**kw):
+        if session.get('role') != 'teacher' and not is_viewer():
             abort(403)
         return fn(*a,**kw)
     return inner
@@ -72,6 +86,18 @@ def add_csrf():
 def csrf_check():
     if request.path == '/api/v1/measurements':
         return
+
+    if session.get('uid') and is_viewer():
+        allowed = (
+            request.path == '/' or
+            request.path == '/monitor' or
+            request.path.startswith('/monitor/') or
+            request.path.startswith('/api/v1/stations/') or
+            request.path == '/logout' or
+            request.path.startswith('/static/')
+        )
+        if not allowed:
+            abort(403)
     if request.method == 'POST':
         submitted = request.form.get('_csrf', '')
         expected = session.get('csrf')
@@ -89,7 +115,7 @@ def login():
         if user:
             session.clear()
             session.update(uid=user['id'], username=user['username'],role=user['role'],csrf=secrets.token_urlsafe(32))
-            return redirect(url_for('index'))
+            return redirect(url_for('monitor') if is_viewer() else url_for('index'))
         flash('Usuário ou senha inválidos.')
     return render_template('login.html')
 
@@ -102,6 +128,8 @@ def logout():
 @app.get('/')
 @require_login
 def index():
+    if is_viewer():
+        return redirect(url_for('monitor'))
     with store.connect() as db:
         if session['role']=='teacher':
             items=db.execute('''SELECT s.id,s.title,s.created_at,u.username,
@@ -196,7 +224,7 @@ def ingest_measurements():
 
 
 @app.get('/monitor')
-@teacher_only
+@monitor_access
 def monitor():
     with store.connect() as db:
         stations = db.execute('''SELECT s.*,
@@ -207,7 +235,7 @@ def monitor():
 
 
 @app.get('/monitor/<int:station_id>')
-@teacher_only
+@monitor_access
 def monitor_station(station_id):
     with store.connect() as db:
         station = db.execute('SELECT * FROM stations WHERE id=?',(station_id,)).fetchone()
@@ -258,7 +286,7 @@ def update_station_labels(station_id):
 
 
 @app.get('/monitor/<int:station_id>/download.csv')
-@teacher_only
+@monitor_access
 def download_station_csv(station_id):
     with store.connect() as db:
         station = db.execute('SELECT * FROM stations WHERE id=?',(station_id,)).fetchone()
@@ -325,7 +353,7 @@ def download_station_csv(station_id):
 
 
 @app.get('/api/v1/stations/<int:station_id>/series')
-@teacher_only
+@monitor_access
 def station_series(station_id):
     metric = request.args.get('metric','').strip()
     try:

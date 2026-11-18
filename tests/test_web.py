@@ -39,6 +39,8 @@ class WebFlowTests(unittest.TestCase):
         store.create_user("professor", "long-password-teacher", "teacher")
         store.create_user("grupo01", "long-password-student", "student")
         store.create_user("grupo02", "long-password-second", "student")
+        store.create_user("alunos", "long-password-viewer", "student")
+        web.app.config["LAB_VIEWER_USERNAME"] = "alunos"
         self.client = web.app.test_client()
 
     def token(self):
@@ -282,6 +284,49 @@ class WebFlowTests(unittest.TestCase):
         self.assertIn("Umidade (%)", csv_text)
         self.assertIn("24.5", csv_text)
         self.assertIn("24.8", csv_text)
+
+    def test_public_viewer_can_only_read_monitoring(self):
+        self.client.post("/api/v1/measurements", json={
+            "station": "viewer_station",
+            "name": "Estacao Publica",
+            "data": {"Temperatura": 23.4},
+            "units": {"Temperatura": "C"},
+        }, headers={"X-LabGateway-Token": os.environ["LAB_INGEST_TOKEN"]})
+
+        self.login("alunos", "long-password-viewer")
+
+        root = self.client.get("/")
+        self.assertEqual(root.status_code, 302)
+        self.assertIn("/monitor", root.location)
+
+        overview = self.client.get("/monitor")
+        self.assertEqual(overview.status_code, 200)
+        self.assertIn(b"Estacao Publica", overview.data)
+
+        with store.connect() as db:
+            station_id = db.execute(
+                "SELECT id FROM stations WHERE station_key='viewer_station'"
+            ).fetchone()["id"]
+
+        detail = self.client.get(f"/monitor/{station_id}")
+        self.assertEqual(detail.status_code, 200)
+        self.assertNotIn(b"Identifica", detail.data)
+
+        series = self.client.get(
+            f"/api/v1/stations/{station_id}/series?metric=Temperatura"
+        )
+        self.assertEqual(series.status_code, 200)
+
+        csv_response = self.client.get(
+            f"/monitor/{station_id}/download.csv"
+        )
+        self.assertEqual(csv_response.status_code, 200)
+
+        self.assertEqual(self.client.get("/datasets").status_code, 403)
+        self.assertEqual(self.client.post(
+            f"/monitor/{station_id}/labels",
+            data={"_csrf": self.token()}
+        ).status_code, 403)
 
     def test_teacher_can_rename_metrics_and_download_station_csv(self):
         for temp, hum in ((20.5, 60.0), (21.0, 61.0)):
