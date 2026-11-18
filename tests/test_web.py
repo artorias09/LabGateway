@@ -217,6 +217,50 @@ class WebFlowTests(unittest.TestCase):
         self.assertEqual(series.status_code, 200)
         self.assertEqual(series.get_json()["points"][0]["value"], 20.5)
 
+    def test_semantic_measurements_keep_names_and_units_in_csv(self):
+        for temp, hum in ((24.5, 62.0), (24.8, 61.7)):
+            r = self.client.post("/api/v1/measurements", json={
+                "station": "estacao_semantica",
+                "name": "Estacao Semantica",
+                "data": {
+                    "Temperatura": temp,
+                    "Umidade": hum,
+                },
+                "units": {
+                    "Temperatura": "C",
+                    "Umidade": "%",
+                },
+            }, headers={"X-LabGateway-Token": os.environ["LAB_INGEST_TOKEN"]})
+            self.assertEqual(r.status_code, 201)
+
+        self.login("professor", "long-password-teacher")
+        with store.connect() as db:
+            station_id = db.execute(
+                "SELECT id FROM stations WHERE station_key='estacao_semantica'"
+            ).fetchone()["id"]
+
+        detail = self.client.get(f"/monitor/{station_id}")
+        self.assertEqual(detail.status_code, 200)
+        self.assertIn(b"Temperatura", detail.data)
+        self.assertIn(b"Umidade", detail.data)
+        self.assertIn(b"C", detail.data)
+
+        series = self.client.get(
+            f"/api/v1/stations/{station_id}/series?metric=Temperatura"
+        )
+        self.assertEqual(series.status_code, 200)
+        body = series.get_json()
+        self.assertEqual(body["label"], "Temperatura")
+        self.assertEqual(body["points"][-1]["unit"], "C")
+
+        csv_response = self.client.get(f"/monitor/{station_id}/download.csv")
+        self.assertEqual(csv_response.status_code, 200)
+        csv_text = csv_response.data.decode("utf-8-sig")
+        self.assertIn("Temperatura (C)", csv_text)
+        self.assertIn("Umidade (%)", csv_text)
+        self.assertIn("24.5", csv_text)
+        self.assertIn("24.8", csv_text)
+
     def test_teacher_can_rename_metrics_and_download_station_csv(self):
         for temp, hum in ((20.5, 60.0), (21.0, 61.0)):
             self.client.post("/api/v1/measurements", json={
