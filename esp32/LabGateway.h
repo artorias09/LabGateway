@@ -4,6 +4,38 @@
 #include <WiFiClientSecure.h>
 #include <math.h>
 
+/*
+BLOCO PADRAO DE INTEGRACAO
+
+1. Coloque LabGateway.h na mesma pasta do arquivo .ino.
+2. Adicione no inicio do codigo:
+   #include "LabGateway.h"
+
+3. Depois que as variaveis dos sensores forem atualizadas, adicione:
+
+   LabGateway.enviar(
+       "Nome da medicao 1", variavel1, "unidade",
+       "Nome da medicao 2", variavel2, "unidade"
+   );
+
+Exemplo:
+
+   LabGateway.enviar(
+       "Temperatura", temperatura, "C",
+       "Umidade", umidade, "%",
+       "Pressao", pressao, "hPa"
+   );
+
+A biblioteca cuida automaticamente de:
+- identificacao da ESP32
+- intervalo entre transmissoes
+- montagem do JSON
+- envio HTTP/HTTPS
+- nomes e unidades enviados ao servidor
+
+Nao e necessario criar outro timer nem outra conexao Wi-Fi.
+*/
+
 #ifndef LABGATEWAY_URL
 #define LABGATEWAY_URL "https://SEU-ENDERECO-LABGATEWAY"
 #endif
@@ -29,7 +61,13 @@ class LabGatewayClass {
     for (size_t i = 0; i < s.length(); i++) {
       char c = s[i];
       if (c == '"' || c == '\\') out += '\\';
-      out += c;
+      if (c == '\n') {
+        out += "\\n";
+      } else if (c == '\r') {
+        out += "\\r";
+      } else {
+        out += c;
+      }
     }
     return out;
   }
@@ -40,10 +78,67 @@ class LabGatewayClass {
   template <typename T>
   static String numberJson(T value) { return String(value); }
 
+  static void appendSemantic(
+      String &, String &, int &, bool &) {}
+
+  template <typename T, typename... Rest>
+  static void appendSemantic(
+      String &dataJson,
+      String &unitsJson,
+      int &count,
+      bool &valid,
+      const char *name,
+      T value,
+      const char *unit,
+      Rest... rest) {
+
+    if (!name || !unit) {
+      valid = false;
+      return;
+    }
+
+    String metric = String(name);
+    String unitText = String(unit);
+    metric.trim();
+    unitText.trim();
+
+    double numeric = static_cast<double>(value);
+
+    if (!metric.length() ||
+        metric.length() > 64 ||
+        unitText.length() > 32 ||
+        !isfinite(numeric)) {
+      valid = false;
+      return;
+    }
+
+    if (count > 0) {
+      dataJson += ",";
+      unitsJson += ",";
+    }
+
+    String escapedMetric = escapeJson(metric);
+    dataJson += "\"" + escapedMetric + "\":";
+    dataJson += numberJson(value);
+
+    unitsJson += "\"" + escapedMetric + "\":\"";
+    unitsJson += escapeJson(unitText);
+    unitsJson += "\"";
+
+    count++;
+    appendSemantic(dataJson, unitsJson, count, valid, rest...);
+  }
+
   static void appendValues(String &, int &, bool &) {}
 
   template <typename T, typename... Rest>
-  static void appendValues(String &json, int &index, bool &valid, T value, Rest... rest) {
+  static void appendValues(
+      String &json,
+      int &index,
+      bool &valid,
+      T value,
+      Rest... rest) {
+
     double numeric = static_cast<double>(value);
     if (!isfinite(numeric)) {
       valid = false;
@@ -62,12 +157,30 @@ class LabGatewayClass {
 
     uint64_t chip = ESP.getEfuseMac();
     char id[24];
-    snprintf(id, sizeof(id), "esp32_%04X%08X",
-             (uint16_t)(chip >> 32), (uint32_t)chip);
+    snprintf(
+        id,
+        sizeof(id),
+        "esp32_%04X%08X",
+        (uint16_t)(chip >> 32),
+        (uint32_t)chip
+    );
     station = String(id);
   }
 
-  bool sendJson(const String &dataJson) {
+  bool intervaloLiberado() {
+    unsigned long agora = millis();
+
+    if (!primeiraTentativa &&
+        (unsigned long)(agora - ultimaTentativa) < LABGATEWAY_INTERVALO_MS) {
+      return false;
+    }
+
+    primeiraTentativa = false;
+    ultimaTentativa = agora;
+    return true;
+  }
+
+  bool sendJson(const String &dataJson, const String &unitsJson) {
     if (WiFi.status() != WL_CONNECTED) return false;
 
     ensureStation();
@@ -84,7 +197,7 @@ class LabGatewayClass {
     String body = "{\"station\":\"" + escapeJson(station) +
                   "\",\"name\":\"" + escapeJson(station) +
                   "\",\"group\":\"\",\"data\":" + dataJson +
-                  ",\"units\":{}}";
+                  ",\"units\":" + unitsJson + "}";
 
     int code = http.POST(body);
     http.end();
@@ -97,26 +210,51 @@ public:
     endpoint += "/api/v1/measurements";
   }
 
-  template <typename... Values>
-  bool enviar(Values... values) {
-    unsigned long agora = millis();
+  template <typename T, typename... Rest>
+  bool enviar(
+      const char *name,
+      T value,
+      const char *unit,
+      Rest... rest) {
 
-    if (!primeiraTentativa &&
-        (unsigned long)(agora - ultimaTentativa) < LABGATEWAY_INTERVALO_MS) {
-      return true;
-    }
+    if (!intervaloLiberado()) return true;
 
-    primeiraTentativa = false;
-    ultimaTentativa = agora;
+    String data = "{";
+    String units = "{";
+    int count = 0;
+    bool valid = true;
+
+    appendSemantic(
+        data,
+        units,
+        count,
+        valid,
+        name,
+        value,
+        unit,
+        rest...
+    );
+
+    data += "}";
+    units += "}";
+
+    if (!valid || count == 0 || count > 32) return false;
+    return sendJson(data, units);
+  }
+
+  template <typename T, typename... Rest>
+  bool enviar(T value, Rest... rest) {
+    if (!intervaloLiberado()) return true;
 
     String data = "{";
     int index = 0;
     bool valid = true;
-    appendValues(data, index, valid, values...);
+
+    appendValues(data, index, valid, value, rest...);
     data += "}";
 
-    if (!valid || index == 0) return false;
-    return sendJson(data);
+    if (!valid || index == 0 || index > 32) return false;
+    return sendJson(data, "{}");
   }
 };
 
