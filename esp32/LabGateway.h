@@ -8,10 +8,14 @@
 BLOCO PADRAO DE INTEGRACAO
 
 1. Coloque LabGateway.h na mesma pasta do arquivo .ino.
-2. Adicione no inicio do codigo:
+2. Antes do include, informe o nome do grupo/projeto:
+
+   #define LABGATEWAY_NOME "NOME_DO_GRUPO"
+
+3. Em seguida adicione:
    #include "LabGateway.h"
 
-3. Depois que as variaveis dos sensores forem atualizadas, adicione:
+4. Depois que as variaveis dos sensores forem atualizadas, adicione:
 
    LabGateway.enviar(
        "Nome da medicao 1", variavel1, "unidade",
@@ -27,7 +31,8 @@ Exemplo:
    );
 
 A biblioteca cuida automaticamente de:
-- identificacao da ESP32
+- identificacao tecnica unica da ESP32
+- nome humano da estacao/grupo
 - intervalo entre transmissoes
 - montagem do JSON
 - envio HTTP/HTTPS
@@ -46,6 +51,10 @@ Nao e necessario criar outro timer nem outra conexao Wi-Fi.
 
 #ifndef LABGATEWAY_INTERVALO_MS
 #define LABGATEWAY_INTERVALO_MS 30000UL
+#endif
+
+#ifndef LABGATEWAY_NOME
+#define LABGATEWAY_NOME "ESTACAO_SEM_NOME"
 #endif
 
 class LabGatewayClass {
@@ -194,8 +203,12 @@ class LabGatewayClass {
     http.addHeader("Content-Type", "application/json");
     http.addHeader("X-LabGateway-Token", token);
 
+    String stationName = String(LABGATEWAY_NOME);
+    stationName.trim();
+    if (!stationName.length()) stationName = station;
+
     String body = "{\"station\":\"" + escapeJson(station) +
-                  "\",\"name\":\"" + escapeJson(station) +
+                  "\",\"name\":\"" + escapeJson(stationName) +
                   "\",\"group\":\"\",\"data\":" + dataJson +
                   ",\"units\":" + unitsJson + "}";
 
