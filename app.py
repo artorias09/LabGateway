@@ -266,10 +266,18 @@ def download_station_csv(station_id):
             abort(404)
         labels = {
             r['metric']: (r['label'], r['unit'])
-            for r in db.execute('SELECT metric,label,unit FROM station_metric_labels WHERE station_id=?',(station_id,)).fetchall()
+            for r in db.execute(
+                'SELECT metric,label,unit FROM station_metric_labels WHERE station_id=?',
+                (station_id,)
+            ).fetchall()
         }
         rows = db.execute('''SELECT metric,value,unit,captured_at,received_at
             FROM measurements WHERE station_id=? ORDER BY captured_at,id''',(station_id,)).fetchall()
+
+    measured_units = {}
+    for row in rows:
+        if row['unit']:
+            measured_units[row['metric']] = row['unit']
 
     metrics = []
     for row in rows:
@@ -296,7 +304,8 @@ def download_station_csv(station_id):
     writer = csv.writer(out)
     headers = ['captured_at','received_at']
     for metric in metrics:
-        label, unit = labels.get(metric,(metric,''))
+        label, configured_unit = labels.get(metric,(metric,''))
+        unit = configured_unit or measured_units.get(metric,'')
         if unit:
             headers.append(f'{label} ({unit})')
         else:
