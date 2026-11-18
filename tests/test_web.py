@@ -217,6 +217,37 @@ class WebFlowTests(unittest.TestCase):
         self.assertEqual(series.status_code, 200)
         self.assertEqual(series.get_json()["points"][0]["value"], 20.5)
 
+    def test_teacher_can_rename_metrics_and_download_station_csv(self):
+        for temp, hum in ((20.5, 60.0), (21.0, 61.0)):
+            self.client.post("/api/v1/measurements", json={
+                "station": "grupo_csv", "name": "Estacao CSV",
+                "data": {"variavel_1": temp, "variavel_2": hum}
+            }, headers={"X-LabGateway-Token": os.environ["LAB_INGEST_TOKEN"]})
+        self.login("professor", "long-password-teacher")
+        with store.connect() as db:
+            station_id = db.execute("SELECT id FROM stations WHERE station_key='grupo_csv'").fetchone()["id"]
+
+        r = self.client.post(f"/monitor/{station_id}/labels", data={
+            "_csrf": self.token(),
+            "label_variavel_1": "Temperatura",
+            "unit_variavel_1": "C",
+            "label_variavel_2": "Umidade",
+            "unit_variavel_2": "%",
+        })
+        self.assertEqual(r.status_code, 302)
+
+        detail = self.client.get(f"/monitor/{station_id}")
+        self.assertIn(b"Temperatura", detail.data)
+        self.assertIn(b"Umidade", detail.data)
+
+        csv_response = self.client.get(f"/monitor/{station_id}/download.csv")
+        self.assertEqual(csv_response.status_code, 200)
+        text = csv_response.data.decode("utf-8-sig")
+        self.assertIn("Temperatura (C)", text)
+        self.assertIn("Umidade (%)", text)
+        self.assertIn("20.5", text)
+        self.assertIn("21.0", text)
+
 
 if __name__ == "__main__":
     unittest.main()
