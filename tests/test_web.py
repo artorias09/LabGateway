@@ -217,6 +217,28 @@ class WebFlowTests(unittest.TestCase):
         self.assertEqual(series.status_code, 200)
         self.assertEqual(series.get_json()["points"][0]["value"], 20.5)
 
+    def test_station_human_name_is_used_without_changing_station_key(self):
+        r = self.client.post("/api/v1/measurements", json={
+            "station": "esp32_A0FD678DBD44",
+            "name": "Grupo 3 - Estacao Meteorologica",
+            "data": {"Temperatura": 26.4},
+            "units": {"Temperatura": "C"},
+        }, headers={"X-LabGateway-Token": os.environ["LAB_INGEST_TOKEN"]})
+        self.assertEqual(r.status_code, 201)
+
+        with store.connect() as db:
+            station = db.execute(
+                "SELECT * FROM stations WHERE station_key='esp32_A0FD678DBD44'"
+            ).fetchone()
+
+        self.assertEqual(station["station_key"], "esp32_A0FD678DBD44")
+        self.assertEqual(station["name"], "Grupo 3 - Estacao Meteorologica")
+
+        self.login("professor", "long-password-teacher")
+        overview = self.client.get("/monitor")
+        self.assertIn(b"Grupo 3 - Estacao Meteorologica", overview.data)
+        self.assertIn(b"esp32_A0FD678DBD44", overview.data)
+
     def test_semantic_measurements_keep_names_and_units_in_csv(self):
         for temp, hum in ((24.5, 62.0), (24.8, 61.7)):
             r = self.client.post("/api/v1/measurements", json={
