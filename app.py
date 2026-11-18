@@ -315,11 +315,23 @@ def station_series(station_id):
         if not metric:
             row = db.execute('SELECT metric FROM measurements WHERE station_id=? ORDER BY id DESC LIMIT 1',(station_id,)).fetchone()
             metric = row['metric'] if row else ''
+        label_row = db.execute(
+            'SELECT label,unit FROM station_metric_labels WHERE station_id=? AND metric=?',
+            (station_id,metric)
+        ).fetchone() if metric else None
         rows = db.execute('''SELECT captured_at,value,unit FROM (
             SELECT id,captured_at,value,unit FROM measurements
             WHERE station_id=? AND metric=? ORDER BY id DESC LIMIT ?
         ) ORDER BY id''',(station_id,metric,limit)).fetchall() if metric else []
-    return {'metric':metric,'points':[dict(r) for r in rows]}
+    label = label_row['label'] if label_row else metric
+    display_unit = label_row['unit'] if label_row and label_row['unit'] else (rows[-1]['unit'] if rows else '')
+    points = []
+    for r in rows:
+        item = dict(r)
+        if display_unit:
+            item['unit'] = display_unit
+        points.append(item)
+    return {'metric':metric,'label':label,'points':points}
 
 
 @app.get('/datasets')
