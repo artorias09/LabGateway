@@ -22,7 +22,8 @@ if len(app.secret_key) < 32:
     raise RuntimeError('Defina LAB_SECRET_KEY (>= 32 caracteres aleatórios)')
 app.config.update(MAX_CONTENT_LENGTH=MAX_DATA_BYTES+100*1024,
                   SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE='Lax',
-                  SESSION_COOKIE_SECURE=os.environ.get('LAB_SECURE_COOKIE','0')=='1')
+                  SESSION_COOKIE_SECURE=os.environ.get('LAB_SECURE_COOKIE','0')=='1',
+                  LAB_VIEWER_USERNAME=os.environ.get('LAB_VIEWER_USERNAME','alunos').strip())
 store.init()
 
 STATUS_LABELS = {'queued':'Na fila','running':'Executando','passed':'Concluído','failed':'Erro no programa','timeout':'Tempo excedido','error':'Falha no servidor'}
@@ -49,7 +50,7 @@ def require_login(fn):
     return inner
 
 def is_viewer():
-    username = os.environ.get('LAB_VIEWER_USERNAME', 'alunos').strip()
+    username = app.config.get('LAB_VIEWER_USERNAME', 'alunos')
     return bool(username) and session.get('username') == username
 
 def teacher_only(fn):
