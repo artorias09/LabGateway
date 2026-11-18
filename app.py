@@ -89,6 +89,7 @@ def csrf_check():
 
     if session.get('uid') and is_viewer():
         allowed = (
+            request.path == '/' or
             request.path == '/monitor' or
             request.path.startswith('/monitor/') or
             request.path.startswith('/api/v1/stations/') or
