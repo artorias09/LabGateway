@@ -12,11 +12,13 @@
     <a class="brand" href="{{ url_for('index') }}">LabGateway<small>Servidor de projetos e dados experimentais</small></a>
     {% if session.uid %}
       <nav class="nav">
+        {% if session.username != config.get('LAB_VIEWER_USERNAME', 'alunos') %}
         <a href="{{ url_for('index') }}" class="{{ 'active' if request.endpoint in ('index','detail','download_project','queue','upload') else '' }}">Projetos</a>
         <a href="{{ url_for('datasets') }}" class="{{ 'active' if request.endpoint in ('datasets','dataset_detail','download_dataset','upload_dataset') else '' }}">Dados experimentais</a>
-        {% if session.role=='teacher' %}<a href="{{ url_for('monitor') }}" class="{{ 'active' if request.endpoint in ('monitor','monitor_station','station_series') else '' }}">Monitoramento</a>{% endif %}
+        {% endif %}
+        {% if session.role=='teacher' or session.username == config.get('LAB_VIEWER_USERNAME', 'alunos') %}<a href="{{ url_for('monitor') }}" class="{{ 'active' if request.endpoint in ('monitor','monitor_station','station_series','download_station_csv') else '' }}">Monitoramento</a>{% endif %}
       </nav>
-      <div class="account"><span>{{ session.username }} | {{ 'Professor' if session.role=='teacher' else 'Grupo' }}</span>
+      <div class="account"><span>{{ session.username }} | {% if session.role=='teacher' %}Professor{% elif session.username == config.get('LAB_VIEWER_USERNAME', 'alunos') %}Visualização{% else %}Grupo{% endif %}</span>
       <form action="{{ url_for('logout') }}" method="post">
         <input type="hidden" name="_csrf" value="{{ csrf() }}">
         <button class="button subtle small" type="submit">Sair</button>
