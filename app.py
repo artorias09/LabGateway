@@ -1,5 +1,6 @@
 """LabGateway HTTP interface. Run with gunicorn in deployment."""
 import io
+import csv
 import json
 import os
 import secrets
@@ -212,15 +213,106 @@ def monitor_station(station_id):
         station = db.execute('SELECT * FROM stations WHERE id=?',(station_id,)).fetchone()
         if station is None:
             abort(404)
-        metrics = db.execute(
-            'SELECT metric,MAX(unit) AS unit,COUNT(*) AS n,MIN(captured_at) AS first_at,MAX(captured_at) AS last_at FROM measurements WHERE station_id=? GROUP BY metric ORDER BY metric',
-            (station_id,)
-        ).fetchall()
-        latest = db.execute('''SELECT m.metric,m.value,m.unit,m.captured_at
+        metrics = db.execute('''SELECT m.metric,
+            COALESCE(l.label,m.metric) AS label,
+            COALESCE(NULLIF(l.unit,''),MAX(m.unit),'') AS display_unit,
+            COUNT(*) AS n,MIN(m.captured_at) AS first_at,MAX(m.captured_at) AS last_at
+            FROM measurements m
+            LEFT JOIN station_metric_labels l ON l.station_id=m.station_id AND l.metric=m.metric
+            WHERE m.station_id=?
+            GROUP BY m.metric,l.label,l.unit
+            ORDER BY m.metric''',(station_id,)).fetchall()
+        latest = db.execute('''SELECT m.metric,m.value,
+            COALESCE(l.label,m.metric) AS label,
+            COALESCE(NULLIF(l.unit,''),m.unit,'') AS display_unit,
+            m.captured_at
             FROM measurements m
             JOIN (SELECT metric,MAX(id) AS id FROM measurements WHERE station_id=? GROUP BY metric) x ON x.id=m.id
+            LEFT JOIN station_metric_labels l ON l.station_id=m.station_id AND l.metric=m.metric
             ORDER BY m.metric''',(station_id,)).fetchall()
     return render_template('monitor_station.html',station=station,metrics=metrics,latest=latest)
+
+
+@app.post('/monitor/<int:station_id>/labels')
+@teacher_only
+def update_station_labels(station_id):
+    with store.connect() as db:
+        station = db.execute('SELECT id FROM stations WHERE id=?',(station_id,)).fetchone()
+        if station is None:
+            abort(404)
+        metrics = db.execute('SELECT DISTINCT metric FROM measurements WHERE station_id=? ORDER BY metric',(station_id,)).fetchall()
+        for row in metrics:
+            metric = row['metric']
+            label = request.form.get(f'label_{metric}', '').strip()
+            unit = request.form.get(f'unit_{metric}', '').strip()
+            if not label:
+                label = metric
+            if len(label) > 100 or len(unit) > 32:
+                abort(400,'Nome ou unidade muito longos')
+            db.execute('''INSERT INTO station_metric_labels(station_id,metric,label,unit)
+                VALUES(?,?,?,?)
+                ON CONFLICT(station_id,metric) DO UPDATE SET label=excluded.label,unit=excluded.unit''',
+                (station_id,metric,label,unit))
+    flash('Nomes das variáveis atualizados.')
+    return redirect(url_for('monitor_station',station_id=station_id))
+
+
+@app.get('/monitor/<int:station_id>/download.csv')
+@teacher_only
+def download_station_csv(station_id):
+    with store.connect() as db:
+        station = db.execute('SELECT * FROM stations WHERE id=?',(station_id,)).fetchone()
+        if station is None:
+            abort(404)
+        labels = {
+            r['metric']: (r['label'], r['unit'])
+            for r in db.execute('SELECT metric,label,unit FROM station_metric_labels WHERE station_id=?',(station_id,)).fetchall()
+        }
+        rows = db.execute('''SELECT metric,value,unit,captured_at,received_at
+            FROM measurements WHERE station_id=? ORDER BY captured_at,id''',(station_id,)).fetchall()
+
+    metrics = []
+    for row in rows:
+        if row['metric'] not in metrics:
+            metrics.append(row['metric'])
+
+    samples = []
+    current = None
+    for row in rows:
+        if current is None or row['metric'] in current['values'] or row['captured_at'] != current['captured_at']:
+            if current is not None:
+                samples.append(current)
+            current = {
+                'captured_at': row['captured_at'],
+                'received_at': row['received_at'],
+                'values': {}
+            }
+        current['values'][row['metric']] = row['value']
+        current['received_at'] = row['received_at']
+    if current is not None:
+        samples.append(current)
+
+    out = io.StringIO()
+    writer = csv.writer(out)
+    headers = ['captured_at','received_at']
+    for metric in metrics:
+        label, unit = labels.get(metric,(metric,''))
+        if unit:
+            headers.append(f'{label} ({unit})')
+        else:
+            headers.append(label)
+    writer.writerow(headers)
+    for sample in samples:
+        writer.writerow([
+            sample['captured_at'],
+            sample['received_at'],
+            *[sample['values'].get(metric,'') for metric in metrics]
+        ])
+
+    data = io.BytesIO(out.getvalue().encode('utf-8-sig'))
+    filename = secure_filename(station['name']).strip('._-') or f'estacao-{station_id}'
+    return send_file(data,mimetype='text/csv',as_attachment=True,
+                     download_name=f'{filename}-historico.csv',max_age=0)
 
 
 @app.get('/api/v1/stations/<int:station_id>/series')
@@ -238,11 +330,23 @@ def station_series(station_id):
         if not metric:
             row = db.execute('SELECT metric FROM measurements WHERE station_id=? ORDER BY id DESC LIMIT 1',(station_id,)).fetchone()
             metric = row['metric'] if row else ''
+        label_row = db.execute(
+            'SELECT label,unit FROM station_metric_labels WHERE station_id=? AND metric=?',
+            (station_id,metric)
+        ).fetchone() if metric else None
         rows = db.execute('''SELECT captured_at,value,unit FROM (
             SELECT id,captured_at,value,unit FROM measurements
             WHERE station_id=? AND metric=? ORDER BY id DESC LIMIT ?
         ) ORDER BY id''',(station_id,metric,limit)).fetchall() if metric else []
-    return {'metric':metric,'points':[dict(r) for r in rows]}
+    label = label_row['label'] if label_row else metric
+    display_unit = label_row['unit'] if label_row and label_row['unit'] else (rows[-1]['unit'] if rows else '')
+    points = []
+    for r in rows:
+        item = dict(r)
+        if display_unit:
+            item['unit'] = display_unit
+        points.append(item)
+    return {'metric':metric,'label':label,'points':points}
 
 
 @app.get('/datasets')

@@ -2,24 +2,52 @@
 {% block title %}{{ station.name }} | LabGateway{% endblock %}
 {% block content %}
 <p class="breadcrumbs"><a href="{{ url_for('monitor') }}">Monitoramento</a> / {{ station.name }}</p>
-<h1>{{ station.name }}</h1>
-<p class="intro">{{ station.group_name or station.station_key }} | última comunicação: {{ station.last_seen_at or 'sem dados' }}</p>
+<div class="monitor-head">
+  <div>
+    <h1>{{ station.name }}</h1>
+    <p class="intro">{{ station.group_name or station.station_key }} | última comunicação: {{ station.last_seen_at or 'sem dados' }}</p>
+  </div>
+  <a class="button" href="{{ url_for('download_station_csv',station_id=station.id) }}">Baixar histórico CSV</a>
+</div>
 
 <div class="latest-grid">
 {% for row in latest %}
   <div class="metric-card">
-    <span>{{ row.metric }}</span>
-    <strong>{{ '%.3f'|format(row.value)|trim('0')|trim('.') }} {{ row.unit }}</strong>
+    <span>{{ row.label }}</span>
+    <strong>{{ '%.3f'|format(row.value) }}{% if row.display_unit %} {{ row.display_unit }}{% endif %}</strong>
     <small>{{ row.captured_at }}</small>
   </div>
 {% endfor %}
 </div>
 
+<section class="panel">
+  <h2>Identificação das variáveis</h2>
+  <p class="hint">Defina uma vez o nome real de cada variável desta estação. Isso não altera o código da ESP32.</p>
+  <form method="post" action="{{ url_for('update_station_labels',station_id=station.id) }}">
+    <input type="hidden" name="_csrf" value="{{ csrf() }}">
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Recebida como</th><th>Nome exibido</th><th>Unidade</th></tr></thead>
+        <tbody>
+        {% for m in metrics %}
+          <tr>
+            <td>{{ m.metric }}</td>
+            <td><input name="label_{{ m.metric }}" value="{{ m.label }}"></td>
+            <td><input name="unit_{{ m.metric }}" value="{{ m.display_unit }}"></td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <button type="submit">Salvar nomes</button>
+  </form>
+</section>
+
 <section class="panel monitor-panel">
   <div class="monitor-head">
     <div><h2>Curva de aquisição</h2><p class="hint">Últimos pontos recebidos. O gráfico atualiza automaticamente.</p></div>
     <select id="metric-select">
-      {% for m in metrics %}<option value="{{ m.metric }}">{{ m.metric }}{% if m.unit %} ({{ m.unit }}){% endif %}</option>{% endfor %}
+      {% for m in metrics %}<option value="{{ m.metric }}">{{ m.label }}{% if m.display_unit %} ({{ m.display_unit }}){% endif %}</option>{% endfor %}
     </select>
   </div>
   <div id="chart" class="chart" data-url="{{ url_for('station_series',station_id=station.id) }}"></div>
@@ -28,7 +56,7 @@
 <section class="panel">
 <h2>Resumo da aquisição</h2>
 <div class="tablewrap"><table><thead><tr><th>Variável</th><th>Registros</th><th>Primeiro</th><th>Último</th></tr></thead><tbody>
-{% for m in metrics %}<tr><td>{{ m.metric }} {{ m.unit }}</td><td>{{ m.n }}</td><td>{{ m.first_at }}</td><td>{{ m.last_at }}</td></tr>{% endfor %}
+{% for m in metrics %}<tr><td>{{ m.label }}{% if m.display_unit %} ({{ m.display_unit }}){% endif %}</td><td>{{ m.n }}</td><td>{{ m.first_at }}</td><td>{{ m.last_at }}</td></tr>{% endfor %}
 </tbody></table></div>
 </section>
 <script src="{{ url_for('static',filename='monitor.js') }}" defer></script>

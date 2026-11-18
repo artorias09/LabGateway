@@ -13,7 +13,7 @@
       const response = await fetch(url, {cache: 'no-store'});
       if (!response.ok) throw new Error('HTTP ' + response.status);
       const data = await response.json();
-      draw(data.points || [], data.metric || select.value);
+      draw(data.points || [], data.label || data.metric || select.value);
     } catch (_) {
       chart.innerHTML = '<p class="empty">Não foi possível atualizar o gráfico.</p>';
     }
