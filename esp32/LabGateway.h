@@ -238,8 +238,6 @@ class LabGatewayClass {
   }
 
   bool sendJson(const String &dataJson, const String &unitsJson) {
-    if (!ensureWifi()) return false;
-
     ensureStation();
 
     WiFiClientSecure client;
@@ -278,6 +276,7 @@ public:
       const char *unit,
       Rest... rest) {
 
+    if (!ensureWifi()) return false;
     if (!intervaloLiberado()) return true;
 
     String data = "{";
@@ -305,6 +304,7 @@ public:
 
   template <typename T, typename... Rest>
   bool enviar(T value, Rest... rest) {
+    if (!ensureWifi()) return false;
     if (!intervaloLiberado()) return true;
 
     String data = "{";
