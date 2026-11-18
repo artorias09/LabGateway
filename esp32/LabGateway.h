@@ -8,14 +8,20 @@
 BLOCO PADRAO DE INTEGRACAO
 
 1. Coloque LabGateway.h na mesma pasta do arquivo .ino.
-2. Antes do include, informe o nome do grupo/projeto:
+2. Antes do include, preencha apenas estas lacunas:
 
    #define LABGATEWAY_NOME "NOME_DO_GRUPO"
+   #define LABGATEWAY_WIFI_SSID "NOME_DA_REDE_WIFI"
+   #define LABGATEWAY_WIFI_SENHA "SENHA_DA_REDE_WIFI"
 
 3. Em seguida adicione:
    #include "LabGateway.h"
 
-4. Depois que as variaveis dos sensores forem atualizadas, adicione:
+4. A biblioteca conecta a ESP32 a essa rede para enviar os dados.
+   Se o projeto ja estiver conectado a uma rede com internet, ela reutiliza a conexao.
+   Se o projeto usar hotspot/AP proprio, ele e preservado e a ESP32 usa AP+STA.
+
+5. Depois que as variaveis dos sensores forem atualizadas, adicione:
 
    LabGateway.enviar(
        "Nome da medicao 1", variavel1, "unidade",
@@ -33,12 +39,15 @@ Exemplo:
 A biblioteca cuida automaticamente de:
 - identificacao tecnica unica da ESP32
 - nome humano da estacao/grupo
+- conexao da ESP32 ao Wi-Fi informado
+- preservacao de hotspot/AP existente usando modo AP+STA
 - intervalo entre transmissoes
 - montagem do JSON
 - envio HTTP/HTTPS
 - nomes e unidades enviados ao servidor
 
-Nao e necessario criar outro timer nem outra conexao Wi-Fi.
+Nao e necessario escrever codigo de conexao Wi-Fi manualmente.
+Basta preencher nome, SSID e senha antes do include.
 */
 
 #ifndef LABGATEWAY_URL
@@ -57,12 +66,22 @@ Nao e necessario criar outro timer nem outra conexao Wi-Fi.
 #define LABGATEWAY_NOME "ESTACAO_SEM_NOME"
 #endif
 
+#ifndef LABGATEWAY_WIFI_SSID
+#define LABGATEWAY_WIFI_SSID ""
+#endif
+
+#ifndef LABGATEWAY_WIFI_SENHA
+#define LABGATEWAY_WIFI_SENHA ""
+#endif
+
 class LabGatewayClass {
   String endpoint;
   String token;
   String station;
   unsigned long ultimaTentativa = 0;
+  unsigned long ultimaTentativaWifi = 0;
   bool primeiraTentativa = true;
+  bool primeiraTentativaWifi = true;
 
   static String escapeJson(const String &s) {
     String out;
@@ -176,6 +195,35 @@ class LabGatewayClass {
     station = String(id);
   }
 
+  bool ensureWifi() {
+    if (WiFi.status() == WL_CONNECTED) return true;
+
+    String ssid = String(LABGATEWAY_WIFI_SSID);
+    String senha = String(LABGATEWAY_WIFI_SENHA);
+    ssid.trim();
+
+    if (!ssid.length()) return false;
+
+    unsigned long agora = millis();
+    if (primeiraTentativaWifi ||
+        (unsigned long)(agora - ultimaTentativaWifi) >= 30000UL) {
+
+      primeiraTentativaWifi = false;
+      ultimaTentativaWifi = agora;
+
+      wifi_mode_t modo = WiFi.getMode();
+      if (modo == WIFI_AP || modo == WIFI_AP_STA) {
+        WiFi.mode(WIFI_AP_STA);
+      } else {
+        WiFi.mode(WIFI_STA);
+      }
+
+      WiFi.begin(ssid.c_str(), senha.c_str());
+    }
+
+    return WiFi.status() == WL_CONNECTED;
+  }
+
   bool intervaloLiberado() {
     unsigned long agora = millis();
 
@@ -190,7 +238,7 @@ class LabGatewayClass {
   }
 
   bool sendJson(const String &dataJson, const String &unitsJson) {
-    if (WiFi.status() != WL_CONNECTED) return false;
+    if (!ensureWifi()) return false;
 
     ensureStation();
 
