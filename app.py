@@ -276,10 +276,21 @@ def download_station_csv(station_id):
         if row['metric'] not in metrics:
             metrics.append(row['metric'])
 
-    grouped = {}
+    samples = []
+    current = None
     for row in rows:
-        key = (row['captured_at'], row['received_at'])
-        grouped.setdefault(key,{})[row['metric']] = row['value']
+        if current is None or row['metric'] in current['values'] or row['captured_at'] != current['captured_at']:
+            if current is not None:
+                samples.append(current)
+            current = {
+                'captured_at': row['captured_at'],
+                'received_at': row['received_at'],
+                'values': {}
+            }
+        current['values'][row['metric']] = row['value']
+        current['received_at'] = row['received_at']
+    if current is not None:
+        samples.append(current)
 
     out = io.StringIO()
     writer = csv.writer(out)
@@ -291,8 +302,12 @@ def download_station_csv(station_id):
         else:
             headers.append(label)
     writer.writerow(headers)
-    for (captured_at,received_at), values in grouped.items():
-        writer.writerow([captured_at,received_at] + [values.get(metric,'') for metric in metrics])
+    for sample in samples:
+        writer.writerow([
+            sample['captured_at'],
+            sample['received_at'],
+            *[sample['values'].get(metric,'') for metric in metrics]
+        ])
 
     data = io.BytesIO(out.getvalue().encode('utf-8-sig'))
     filename = secure_filename(station['name']).strip('._-') or f'estacao-{station_id}'
