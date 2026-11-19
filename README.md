@@ -34,12 +34,6 @@ python -m unittest discover -s tests -v
 python -m compileall -q app.py admin.py core.py store.py worker.py tests
 ```
 
-## Implantação futura
-Verificar Raspberry Pi OS em ARM64 (`uname -m`), memória, espaço livre, Docker e permissões dos serviços. Fazer backup do projeto do forno e **não o sobrescrever**. Configurar contas Unix separadas para web e worker. Usar HTTPS, autenticação adicional e controle de acesso antes de configurar ngrok na eduroam autorizada.
-
-## Riscos e limitações
-Docker não é garantia absoluta de isolamento para código hostil. Ainda faltam testes integrados, rate limiting, auditoria, revisão de permissões, retenção, limpeza de contêineres após timeout e recuperação de falhas. **Não expor o protótipo à internet ou a alunos reais até homologação.**
-
 Veja [arquitetura](docs/ARCHITECTURE.md) e [roadmap](docs/ROADMAP.md).
 
 
